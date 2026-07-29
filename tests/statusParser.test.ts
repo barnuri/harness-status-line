@@ -2,6 +2,9 @@ import { describe, it, expect } from 'bun:test';
 import { StatusParser } from '../src/statusParser.ts';
 import { ConfigManager } from '../src/configManager.ts';
 import type { Config } from '../src/types.ts';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 const cfg = ConfigManager.DEFAULT_CONFIG;
 
@@ -66,6 +69,61 @@ describe('buildSegments() — folder segment', () => {
   it('omits folder when cwd and workspace are absent', () => {
     const segs = parser.buildSegments({}, cfg);
     expect(segs.find(s => s.icon === '📁 ')).toBeUndefined();
+  });
+});
+
+// ────────────────────────────────────────────────────────
+// buildSegments() — slug segment
+// ────────────────────────────────────────────────────────
+
+describe('buildSegments() — slug segment', () => {
+  const slugDir = path.join(os.homedir(), '.claude', 'session-slugs');
+
+  function writeSlugFile(sessionId: string, slug: string): void {
+    fs.mkdirSync(slugDir, { recursive: true });
+    fs.writeFileSync(path.join(slugDir, sessionId), slug + '\n', 'utf-8');
+  }
+
+  function removeSlugFile(sessionId: string): void {
+    try {
+      fs.unlinkSync(path.join(slugDir, sessionId));
+    } catch {
+      // already absent
+    }
+  }
+
+  it('reads the slug from ~/.claude/session-slugs/<session_id> when session_id is present', () => {
+    const sessionId = 'test-slug-segment-session';
+    writeSlugFile(sessionId, '2026-07-29-skills-evolvement');
+    try {
+      const segs = parser.buildSegments({ session_id: sessionId }, cfg);
+      const seg = segs.find(s => s.icon === '🏷 ');
+      expect(seg?.value).toBe('2026-07-29-skills-evolvement');
+    } finally {
+      removeSlugFile(sessionId);
+    }
+  });
+
+  it('omits the slug segment when no slug file exists for the session', () => {
+    const segs = parser.buildSegments({ session_id: 'session-with-no-slug-file' }, cfg);
+    expect(segs.find(s => s.icon === '🏷 ')).toBeUndefined();
+  });
+
+  it('omits the slug segment when session_id is absent', () => {
+    const segs = parser.buildSegments({}, cfg);
+    expect(segs.find(s => s.icon === '🏷 ')).toBeUndefined();
+  });
+
+  it('omits slug segment when visibility.slug is false', () => {
+    const sessionId = 'test-slug-visibility-off';
+    writeSlugFile(sessionId, 'some-slug');
+    try {
+      const config = makeConfig({ segments: { ...cfg.segments, slug: false } });
+      const segs = parser.buildSegments({ session_id: sessionId }, config);
+      expect(segs.find(s => s.icon === '🏷 ')).toBeUndefined();
+    } finally {
+      removeSlugFile(sessionId);
+    }
   });
 });
 

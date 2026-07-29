@@ -1,6 +1,7 @@
 import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap } from './types.ts';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 
 export class StatusParser {
   private static readonly MINI_BAR_BLOCKS = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'] as const;
@@ -26,6 +27,13 @@ export class StatusParser {
       const folder = this.extractFolder(status);
       if (folder) {
         segments.push({ icon: '📁 ', label: '', value: folder, fg: colors.folder.fg, bg: colors.folder.bg });
+      }
+    }
+
+    if (visibility.slug) {
+      const slug = this.extractSlug(status);
+      if (slug) {
+        segments.push({ icon: '🏷 ', label: '', value: slug, fg: colors.slug.fg, bg: colors.slug.bg });
       }
     }
 
@@ -161,6 +169,20 @@ export class StatusParser {
       return null;
     }
     return path.basename(dir);
+  }
+
+  private extractSlug(status: StatusJSON): string | null {
+    const sessionId = status.session_id ?? process.env['CLAUDE_CODE_SESSION_ID'];
+    if (!sessionId) {
+      return null;
+    }
+    const slugFile = path.join(os.homedir(), '.claude', 'session-slugs', sessionId);
+    try {
+      const slug = fs.readFileSync(slugFile, 'utf-8').trim();
+      return slug || null;
+    } catch {
+      return null;
+    }
   }
 
   private extractModel(status: StatusJSON): string | null {

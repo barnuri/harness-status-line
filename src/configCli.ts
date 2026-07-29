@@ -56,6 +56,7 @@ Commands:
 Keys:
   separatorStyle              powerline | spaces
   segments.folder             true | false
+  segments.slug               true | false
   segments.model              true | false
   segments.context            true | false
   segments.tokens             true | false
@@ -63,7 +64,7 @@ Keys:
   refreshInterval             <milliseconds>
   colors.<segment>.<bg|fg>    <R,G,B>  (e.g. 30,41,59)
 
-Segments: folder, model, ctxHealthy, ctxWarning, ctxCritical, tokens,
+Segments: folder, slug, model, ctxHealthy, ctxWarning, ctxCritical, tokens,
           rateHealthy, rateWarning, rateCritical
 
 Examples:

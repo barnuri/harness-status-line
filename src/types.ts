@@ -70,6 +70,7 @@ export interface SegmentVisibility {
   readonly tokens: boolean;
   readonly auth: boolean;
   readonly rateLimits: boolean;
+  readonly slug: boolean;
 }
 
 export interface SegmentColorMap {
@@ -85,6 +86,7 @@ export interface SegmentColorMap {
   readonly rateHealthy: SegmentColorConfig;
   readonly rateWarning: SegmentColorConfig;
   readonly rateCritical: SegmentColorConfig;
+  readonly slug: SegmentColorConfig;
 }
 
 export interface Config {

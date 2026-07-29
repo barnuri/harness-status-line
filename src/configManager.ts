@@ -18,6 +18,7 @@ export class ConfigManager {
       tokens: true,
       auth: true,
       rateLimits: true,
+      slug: true,
     },
     colors: {
       folder:           { bg: [30, 41, 59],   fg: [248, 250, 252] },
@@ -32,6 +33,7 @@ export class ConfigManager {
       rateHealthy:      { bg: [21, 94, 117],  fg: [248, 250, 252] },
       rateWarning:      { bg: [180, 83, 9],   fg: [15, 23, 42]    },
       rateCritical:     { bg: [185, 28, 28],  fg: [248, 250, 252] },
+      slug:             { bg: [88, 28, 135],  fg: [248, 250, 252] },
     },
   };
 
