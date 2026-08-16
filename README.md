@@ -92,6 +92,51 @@ claude-status-line
 stdout → Claude Code status bar
 ```
 
+## opencode
+
+The same status line renders inside [opencode](https://opencode.ai) as a TUI plugin, reusing the
+exact same `buildSegments` pipeline — so the segments, colours, and thresholds are identical.
+
+### Enabling it
+
+Add the plugin's **absolute path** to `~/.config/opencode/tui.json`:
+
+```json
+{
+  "plugin": ["/absolute/path/to/claude-status-line/src/opencode/plugin.ts"]
+}
+```
+
+Then restart opencode — config is read once at startup.
+
+> **Use `tui.json`, not `opencode.jsonc`.** The `plugin` array in `opencode.jsonc` is the *server*
+> plugin loader; it will load this module and call its `tui` export with a server `PluginInput`,
+> which has no `slots` and therefore fails.
+
+### Where the data comes from
+
+| Segment | Source |
+|---|---|
+| folder | `api.state.path.directory` (falls back to `worktree`) |
+| slug | `~/.claude/session-slugs/<session id>` — the same file the Claude status line reads |
+| git branch | derived from the folder by the shared parser |
+| model | `api.state.provider[…].models[modelID].name` for the newest assistant message |
+| context % / tokens | that message's `tokens` (`total`, else input + output + reasoning + cache) against the model's `limit.context` |
+| auth, rate limits | `~/.claude/usage-snapshot.json` |
+
+Rate limits are Claude-specific and never reach opencode, so they are read from the snapshot that
+the Claude status-line wrapper already writes. **If that snapshot is missing or older than 15
+minutes, the rate-limit and auth segments are omitted** rather than shown stale — everything else
+still renders.
+
+### Known differences from the Claude status line
+
+- **No powerline separators.** An opencode slot is a component tree, not a character stream, so
+  segments render as padded coloured boxes instead of `` glyph joins. Wrapping is handled by
+  the TUI's own flex layout rather than this repo's width calculation.
+- Model, context, and token segments only appear once a session has an assistant message; on the
+  opencode home screen there is nothing to report yet.
+
 ## Development
 
 ```bash

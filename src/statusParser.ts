@@ -172,7 +172,15 @@ export class StatusParser {
   }
 
   private extractSlug(status: StatusJSON): string | null {
-    const sessionId = status.session_id ?? process.env['CLAUDE_CODE_SESSION_ID'];
+    const sessionId =
+      status.session_id
+      ?? process.env['CURSOR_CONVERSATION_ID']
+      ?? process.env['CLAUDE_CODE_SESSION_ID']
+      ?? process.env['CODEX_THREAD_ID']
+      ?? process.env['GROK_SESSION_ID']
+      ?? process.env['GEMINI_SESSION_ID']
+      ?? process.env['DSH_SESSION_ID']
+      ?? process.env['DEEPSEEK_SESSION_ID'];
     if (!sessionId) {
       return null;
     }

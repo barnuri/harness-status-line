@@ -78,6 +78,35 @@ describe('buildSegments() — folder segment', () => {
 
 describe('buildSegments() — slug segment', () => {
   const slugDir = path.join(os.homedir(), '.claude', 'session-slugs');
+  const SLUG_ENV_KEYS = [
+    'CURSOR_CONVERSATION_ID',
+    'CLAUDE_CODE_SESSION_ID',
+    'CODEX_THREAD_ID',
+    'GROK_SESSION_ID',
+    'GEMINI_SESSION_ID',
+    'DSH_SESSION_ID',
+    'DEEPSEEK_SESSION_ID',
+  ] as const;
+
+  function withClearedSlugEnv(run: () => void): void {
+    const saved: Record<string, string | undefined> = {};
+    for (const key of SLUG_ENV_KEYS) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+    try {
+      run();
+    } finally {
+      for (const key of SLUG_ENV_KEYS) {
+        const prev = saved[key];
+        if (prev === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = prev;
+        }
+      }
+    }
+  }
 
   function writeSlugFile(sessionId: string, slug: string): void {
     fs.mkdirSync(slugDir, { recursive: true });
@@ -110,8 +139,40 @@ describe('buildSegments() — slug segment', () => {
   });
 
   it('omits the slug segment when session_id is absent', () => {
-    const segs = parser.buildSegments({}, cfg);
-    expect(segs.find(s => s.icon === '🏷 ')).toBeUndefined();
+    withClearedSlugEnv(() => {
+      const segs = parser.buildSegments({}, cfg);
+      expect(segs.find(s => s.icon === '🏷 ')).toBeUndefined();
+    });
+  });
+
+  it('falls back to CURSOR_CONVERSATION_ID when status.session_id is absent', () => {
+    const conversationId = 'test-cursor-conversation-id';
+    writeSlugFile(conversationId, '2026-08-16-cursor-slug');
+    withClearedSlugEnv(() => {
+      process.env['CURSOR_CONVERSATION_ID'] = conversationId;
+      try {
+        const segs = parser.buildSegments({}, cfg);
+        const seg = segs.find(s => s.icon === '🏷 ');
+        expect(seg?.value).toBe('2026-08-16-cursor-slug');
+      } finally {
+        removeSlugFile(conversationId);
+      }
+    });
+  });
+
+  it('falls back to GROK_SESSION_ID when status.session_id is absent', () => {
+    const grokId = 'test-grok-session-id';
+    writeSlugFile(grokId, '2026-08-16-grok-slug');
+    withClearedSlugEnv(() => {
+      process.env['GROK_SESSION_ID'] = grokId;
+      try {
+        const segs = parser.buildSegments({}, cfg);
+        const seg = segs.find(s => s.icon === '🏷 ');
+        expect(seg?.value).toBe('2026-08-16-grok-slug');
+      } finally {
+        removeSlugFile(grokId);
+      }
+    });
   });
 
   it('omits slug segment when visibility.slug is false', () => {
@@ -626,20 +687,45 @@ describe('buildSegments() — auth segment', () => {
 
 describe('buildSegments() — ordering', () => {
   it('emits segments in order: folder, git, model, ctx, tokens, auth, rate limits', () => {
-    const p = new FakeParser('main');
-    const segs = p.buildSegments({
-      cwd: '/home/user/proj',
-      model: 'claude',
-      context_window: { percentage: 40, tokens: 40000 },
-      rate_limits: { session: { remaining: 50, limit: 100 } },
-    }, cfg);
-    const icons = segs.map(s => s.icon);
-    expect(icons[0]).toBe('📁 ');
-    expect(icons[1]).toBe('⎇ ');
-    expect(icons[2]).toBe('🤖 ');
-    expect(icons[3]).toBe('⏳ ');
-    expect(icons[4]).toBe('🔢 ');
-    expect(icons[5]).toBe('✨ ');
-    expect(icons[6]).toBe('⏱ ');
+    const slugEnvKeys = [
+      'CURSOR_CONVERSATION_ID',
+      'CLAUDE_CODE_SESSION_ID',
+      'CODEX_THREAD_ID',
+      'GROK_SESSION_ID',
+      'GEMINI_SESSION_ID',
+      'DSH_SESSION_ID',
+      'DEEPSEEK_SESSION_ID',
+    ] as const;
+    const saved: Record<string, string | undefined> = {};
+    for (const key of slugEnvKeys) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+    try {
+      const p = new FakeParser('main');
+      const segs = p.buildSegments({
+        cwd: '/home/user/proj',
+        model: 'claude',
+        context_window: { percentage: 40, tokens: 40000 },
+        rate_limits: { session: { remaining: 50, limit: 100 } },
+      }, cfg);
+      const icons = segs.map(s => s.icon);
+      expect(icons[0]).toBe('📁 ');
+      expect(icons[1]).toBe('⎇ ');
+      expect(icons[2]).toBe('🤖 ');
+      expect(icons[3]).toBe('⏳ ');
+      expect(icons[4]).toBe('🔢 ');
+      expect(icons[5]).toBe('✨ ');
+      expect(icons[6]).toBe('⏱ ');
+    } finally {
+      for (const key of slugEnvKeys) {
+        const prev = saved[key];
+        if (prev === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = prev;
+        }
+      }
+    }
   });
 });

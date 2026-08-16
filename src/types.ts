@@ -53,6 +53,22 @@ export interface StatusJSON {
   readonly api?: ApiInfo;
 }
 
+export interface OpencodeStatusInput {
+  readonly directory?: string;
+  readonly model?: string;
+  readonly sessionId?: string;
+  readonly contextTokens?: number;
+  readonly contextWindowSize?: number;
+  readonly version?: string;
+}
+
+export interface UsageSnapshot {
+  readonly api?: ApiInfo | null;
+  readonly rate_limits?: RateLimits;
+  readonly session_id?: string;
+  readonly captured_at?: string;
+}
+
 export type RgbColor = readonly [number, number, number];
 
 export interface SegmentColorConfig {

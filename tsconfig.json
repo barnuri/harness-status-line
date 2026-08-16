@@ -4,6 +4,8 @@
         "module": "ESNext",
         "moduleResolution": "bundler",
         "strict": true,
+        // @opentui/core ships a .d.ts that does not type-check (KeyHandler.emit variance).
+        "skipLibCheck": true,
         "noUncheckedIndexedAccess": true,
         "outDir": "dist",
         "rootDir": "src",
