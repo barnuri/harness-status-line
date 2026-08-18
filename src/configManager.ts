@@ -19,6 +19,8 @@ export class ConfigManager {
       auth: true,
       rateLimits: true,
       slug: true,
+      effort: true,
+      workflow: true,
     },
     colors: {
       folder:           { bg: [30, 41, 59],   fg: [248, 250, 252] },
@@ -34,6 +36,8 @@ export class ConfigManager {
       rateWarning:      { bg: [180, 83, 9],   fg: [15, 23, 42]    },
       rateCritical:     { bg: [185, 28, 28],  fg: [248, 250, 252] },
       slug:             { bg: [88, 28, 135],  fg: [248, 250, 252] },
+      effort:           { bg: [55, 48, 163],  fg: [248, 250, 252] },
+      workflow:         { bg: [15, 118, 110], fg: [248, 250, 252] },
     },
   };
 

@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "description": "Claude Code status line — shows cwd, model, context%, tokens, and rate-limit stats",
   "bin": {
-    "claude-status-line": "./src/index.ts"
+    "claude-status-line": "./src/index.ts",
+    "claude-subagent-status-line": "./src/subagentStatusLineIndex.ts"
   },
   "scripts": {
     "start": "bun run src/index.ts",
     "setup": "bun run src/index.ts --setup",
+    "subagent-start": "bun run src/subagentStatusLineIndex.ts",
     "capture": "bun run scripts/update-all.ts",
     "update-all": "bun run scripts/update-all.ts"
   },

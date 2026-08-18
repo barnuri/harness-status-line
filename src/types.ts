@@ -41,6 +41,12 @@ export interface ApiInfo {
   readonly base_url?: string;
 }
 
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export interface Effort {
+  readonly level?: EffortLevel;
+}
+
 export interface StatusJSON {
   readonly cwd?: string;
   readonly model?: unknown;
@@ -51,6 +57,34 @@ export interface StatusJSON {
   readonly hook_event_name?: string;
   readonly version?: string;
   readonly api?: ApiInfo;
+  readonly effort?: Effort;
+}
+
+export interface SubagentTask {
+  readonly id: string;
+  readonly name?: string;
+  readonly type?: string;
+  readonly status?: string;
+  readonly description?: string;
+  readonly label?: string;
+  readonly startTime?: string;
+  readonly model?: string;
+  readonly effort?: EffortLevel | number;
+  readonly contextWindowSize?: number;
+  readonly tokenCount?: number;
+  readonly tokenSamples?: unknown;
+  readonly cwd?: string;
+}
+
+export interface SubagentStatusLineInput {
+  readonly session_id?: string;
+  readonly columns?: number;
+  readonly tasks?: readonly SubagentTask[];
+}
+
+export interface SubagentRowOutput {
+  readonly id: string;
+  readonly content: string;
 }
 
 export interface OpencodeStatusInput {
@@ -87,6 +121,8 @@ export interface SegmentVisibility {
   readonly auth: boolean;
   readonly rateLimits: boolean;
   readonly slug: boolean;
+  readonly effort: boolean;
+  readonly workflow: boolean;
 }
 
 export interface SegmentColorMap {
@@ -103,6 +139,8 @@ export interface SegmentColorMap {
   readonly rateWarning: SegmentColorConfig;
   readonly rateCritical: SegmentColorConfig;
   readonly slug: SegmentColorConfig;
+  readonly effort: SegmentColorConfig;
+  readonly workflow: SegmentColorConfig;
 }
 
 export interface Config {

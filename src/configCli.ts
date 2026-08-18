@@ -61,11 +61,13 @@ Keys:
   segments.context            true | false
   segments.tokens             true | false
   segments.rateLimits         true | false
+  segments.effort             true | false
+  segments.workflow           true | false
   refreshInterval             <milliseconds>
   colors.<segment>.<bg|fg>    <R,G,B>  (e.g. 30,41,59)
 
 Segments: folder, slug, model, ctxHealthy, ctxWarning, ctxCritical, tokens,
-          rateHealthy, rateWarning, rateCritical
+          rateHealthy, rateWarning, rateCritical, effort, workflow
 
 Examples:
   config set separatorStyle spaces

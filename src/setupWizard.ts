@@ -25,7 +25,7 @@ export class SetupWizard {
     console.log(`   Command: ${command}`);
     console.log('\nRestart Claude Code to activate the status line.\n');
     console.log('Status line will show:');
-    console.log('  📁 Current folder | 🤖 Model | 📊 Context% | 🔢 Tokens | ⏱ Rate limits%\n');
+    console.log('  📁 Current folder | 🤖 Model | 📊 Context% | 🔢 Tokens | 🧠 Effort | ⚙ Workflow | ⏱ Rate limits%\n');
   }
 
   private resolveSettingsPath(): string {

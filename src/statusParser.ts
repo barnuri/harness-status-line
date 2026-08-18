@@ -1,4 +1,7 @@
 import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap } from './types.ts';
+import { formatTokenCount } from './shared/tokenFormat.ts';
+import { resolveSessionSlug } from './shared/sessionSlug.ts';
+import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -7,6 +10,7 @@ export class StatusParser {
   private static readonly MINI_BAR_BLOCKS = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'] as const;
   private static readonly MINI_BAR_WIDTH = 5;
   private static readonly KNOWN_RATE_LIMIT_KEYS: ReadonlyArray<string> = ['session', 'five_hour', 'week', 'seven_day', 'day'];
+  private static readonly WORKFLOW_STALE_AFTER_SECONDS = 120;
 
   parse(raw: string): StatusJSON {
     if (!raw.trim()) {
@@ -65,7 +69,7 @@ export class StatusParser {
       const tokenCount = this.extractTokenCount(status);
       if (tokenCount !== null) {
         const pctSuffix = visibility.context && contextPercent !== null ? ` ${contextPercent}%` : '';
-        const value = `${this.formatTokens(tokenCount)}${pctSuffix}`;
+        const value = `${formatTokenCount(tokenCount)}${pctSuffix}`;
         segments.push({ icon: '🔢 ', label: 'tokens', value, fg: colors.tokens.fg, bg: colors.tokens.bg });
       }
     }
@@ -75,6 +79,17 @@ export class StatusParser {
       if (authSeg) {
         segments.push(authSeg);
       }
+    }
+
+    if (visibility.effort) {
+      const effort = this.extractEffort(status);
+      if (effort) {
+        segments.push({ icon: '🧠 ', label: '', value: effort, fg: colors.effort.fg, bg: colors.effort.bg });
+      }
+    }
+
+    if (visibility.workflow && this.extractWorkflowActive(status)) {
+      segments.push({ icon: '⚙ ', label: 'workflow', value: 'active', fg: colors.workflow.fg, bg: colors.workflow.bg });
     }
 
     if (visibility.rateLimits) {
@@ -172,8 +187,11 @@ export class StatusParser {
   }
 
   private extractSlug(status: StatusJSON): string | null {
-    const sessionId =
-      status.session_id
+    return resolveSessionSlug(this.resolveSessionId(status));
+  }
+
+  private resolveSessionId(status: StatusJSON): string | undefined {
+    return status.session_id
       ?? process.env['CURSOR_CONVERSATION_ID']
       ?? process.env['CLAUDE_CODE_SESSION_ID']
       ?? process.env['CODEX_THREAD_ID']
@@ -181,16 +199,6 @@ export class StatusParser {
       ?? process.env['GEMINI_SESSION_ID']
       ?? process.env['DSH_SESSION_ID']
       ?? process.env['DEEPSEEK_SESSION_ID'];
-    if (!sessionId) {
-      return null;
-    }
-    const slugFile = path.join(os.homedir(), '.claude', 'session-slugs', sessionId);
-    try {
-      const slug = fs.readFileSync(slugFile, 'utf-8').trim();
-      return slug || null;
-    } catch {
-      return null;
-    }
   }
 
   private extractModel(status: StatusJSON): string | null {
@@ -203,6 +211,14 @@ export class StatusParser {
       if (typeof val === 'string') { return val; }
     }
     return null;
+  }
+
+  private extractEffort(status: StatusJSON): string | null {
+    return status.effort?.level ?? null;
+  }
+
+  private extractWorkflowActive(status: StatusJSON): boolean {
+    return readWorkflowActiveState(this.resolveSessionId(status), StatusParser.WORKFLOW_STALE_AFTER_SECONDS);
   }
 
   private extractContextPercent(status: StatusJSON): number | null {
@@ -289,11 +305,5 @@ export class StatusParser {
       return Math.round((limit.used / limit.limit) * 100);
     }
     return null;
-  }
-
-  private formatTokens(count: number): string {
-    if (count >= 1_000_000) { return `${(count / 1_000_000).toFixed(1)}M`; }
-    if (count >= 1_000) { return `${(count / 1_000).toFixed(1)}k`; }
-    return String(count);
   }
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import { StatusParser } from '../src/statusParser.ts';
 import { ConfigManager } from '../src/configManager.ts';
+import { writeWorkflowActiveState } from '../src/shared/workflowActiveState.ts';
 import type { Config } from '../src/types.ts';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -316,6 +317,109 @@ describe('buildSegments() — model segment', () => {
   it('omits model segment when model object has no recognized key', () => {
     const segs = parser.buildSegments({ model: {} }, cfg);
     expect(segs.find(s => s.icon === '🤖 ')).toBeUndefined();
+  });
+});
+
+// ────────────────────────────────────────────────────────
+// buildSegments() — effort segment
+// ────────────────────────────────────────────────────────
+
+describe('buildSegments() — effort segment', () => {
+  it('includes effort segment when effort.level is present', () => {
+    const segs = parser.buildSegments({ effort: { level: 'high' } }, cfg);
+    const seg = segs.find(s => s.icon === '🧠 ');
+    expect(seg?.value).toBe('high');
+  });
+
+  it('uses configured effort colors', () => {
+    const segs = parser.buildSegments({ effort: { level: 'max' } }, cfg);
+    const seg = segs.find(s => s.icon === '🧠 ')!;
+    expect(seg.bg).toEqual([55, 48, 163]);
+    expect(seg.fg).toEqual([248, 250, 252]);
+  });
+
+  it('omits effort segment when visibility.effort is false', () => {
+    const config = makeConfig({ segments: { ...cfg.segments, effort: false } });
+    const segs = parser.buildSegments({ effort: { level: 'high' } }, config);
+    expect(segs.find(s => s.icon === '🧠 ')).toBeUndefined();
+  });
+
+  it('omits effort segment when effort is absent (model does not support it)', () => {
+    const segs = parser.buildSegments({}, cfg);
+    expect(segs.find(s => s.icon === '🧠 ')).toBeUndefined();
+  });
+
+  it('omits effort segment when effort.level is absent', () => {
+    const segs = parser.buildSegments({ effort: {} }, cfg);
+    expect(segs.find(s => s.icon === '🧠 ')).toBeUndefined();
+  });
+});
+
+// ────────────────────────────────────────────────────────
+// buildSegments() — workflow-active segment
+// ────────────────────────────────────────────────────────
+
+describe('buildSegments() — workflow-active segment', () => {
+  function removeWorkflowStateFile(sessionId: string): void {
+    try {
+      fs.unlinkSync(path.join(os.homedir(), '.claude', 'workflow-active', sessionId));
+    } catch {
+      // already absent
+    }
+  }
+
+  it('includes workflow segment when active state is fresh', () => {
+    const sessionId = 'test-workflow-segment-active';
+    writeWorkflowActiveState(sessionId, true);
+    try {
+      const segs = parser.buildSegments({ session_id: sessionId }, cfg);
+      const seg = segs.find(s => s.icon === '⚙ ');
+      expect(seg?.value).toBe('active');
+      expect(seg?.label).toBe('workflow');
+    } finally {
+      removeWorkflowStateFile(sessionId);
+    }
+  });
+
+  it('uses configured workflow colors', () => {
+    const sessionId = 'test-workflow-segment-colors';
+    writeWorkflowActiveState(sessionId, true);
+    try {
+      const segs = parser.buildSegments({ session_id: sessionId }, cfg);
+      const seg = segs.find(s => s.icon === '⚙ ')!;
+      expect(seg.bg).toEqual([15, 118, 110]);
+      expect(seg.fg).toEqual([248, 250, 252]);
+    } finally {
+      removeWorkflowStateFile(sessionId);
+    }
+  });
+
+  it('omits workflow segment when state is stale', () => {
+    const sessionId = 'test-workflow-segment-stale';
+    writeWorkflowActiveState(sessionId, true, Date.now() / 1000 - 1000);
+    try {
+      const segs = parser.buildSegments({ session_id: sessionId }, cfg);
+      expect(segs.find(s => s.icon === '⚙ ')).toBeUndefined();
+    } finally {
+      removeWorkflowStateFile(sessionId);
+    }
+  });
+
+  it('omits workflow segment when no state file exists', () => {
+    const segs = parser.buildSegments({ session_id: 'test-workflow-segment-no-file' }, cfg);
+    expect(segs.find(s => s.icon === '⚙ ')).toBeUndefined();
+  });
+
+  it('omits workflow segment when visibility.workflow is false', () => {
+    const sessionId = 'test-workflow-segment-visibility-off';
+    writeWorkflowActiveState(sessionId, true);
+    try {
+      const config = makeConfig({ segments: { ...cfg.segments, workflow: false } });
+      const segs = parser.buildSegments({ session_id: sessionId }, config);
+      expect(segs.find(s => s.icon === '⚙ ')).toBeUndefined();
+    } finally {
+      removeWorkflowStateFile(sessionId);
+    }
   });
 });
 
