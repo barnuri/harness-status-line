@@ -134,12 +134,15 @@ describe('SubagentStatusLineRenderer.buildRows()', () => {
   });
 
   it('truncates without splitting a surrogate pair (e.g. the slug emoji)', () => {
+    // With this exact name/slug/columns combination, a naive UTF-16-code-unit slice
+    // cuts directly between the slug icon's surrogate pair (verified against the
+    // pre-fix implementation), so this deterministically catches a regression.
     const sessionId = 'test-subagent-truncate-surrogate';
     writeSlugFile(sessionId, 'a-fairly-long-session-slug-name');
     try {
       const rows = renderer.buildRows({
         session_id: sessionId,
-        columns: 32,
+        columns: 55,
         tasks: [{ id: 't1', name: 'a very long task name that overflows the row width' }],
       });
       const content = rows[0]?.content ?? '';
