@@ -30,9 +30,17 @@ describe('ConfigManager — DEFAULT_CONFIG', () => {
   it('DEFAULT_CONFIG enables all segments', () => {
     const { segments } = ConfigManager.DEFAULT_CONFIG;
     expect(segments.folder).toBe(true);
+    expect(segments.git).toBe(true);
     expect(segments.model).toBe(true);
     expect(segments.context).toBe(true);
+    expect(segments.auth).toBe(true);
     expect(segments.rateLimits).toBe(true);
+    expect(segments.slug).toBe(true);
+    expect(segments.effort).toBe(true);
+    expect(segments.workflow).toBe(true);
+    expect(segments.vim).toBe(true);
+    expect(segments.worktree).toBe(true);
+    expect(segments.autorun).toBe(true);
   });
 
   it('DEFAULT_CONFIG has refreshInterval of 2000', () => {
@@ -41,7 +49,11 @@ describe('ConfigManager — DEFAULT_CONFIG', () => {
 
   it('DEFAULT_CONFIG has all required color keys', () => {
     const { colors } = ConfigManager.DEFAULT_CONFIG;
-    for (const key of ['folder', 'model', 'ctxHealthy', 'ctxWarning', 'ctxCritical', 'rateHealthy', 'rateWarning', 'rateCritical']) {
+    for (const key of [
+      'folder', 'git', 'model', 'ctxHealthy', 'ctxWarning', 'ctxCritical',
+      'authSubscription', 'authApi', 'rateHealthy', 'rateWarning', 'rateCritical',
+      'slug', 'effort', 'workflow', 'vim', 'worktree', 'autorun',
+    ]) {
       const c = colors[key as keyof typeof colors];
       expect(c.bg).toHaveLength(3);
       expect(c.fg).toHaveLength(3);

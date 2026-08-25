@@ -40,7 +40,12 @@ If the content doesn't fit the terminal width it wraps to additional lines — *
 bunx barnuri/harness-status-line --setup
 ```
 
-This writes the `statusLine` configuration into your `~/.claude/settings.json` (or `.claude/settings.json` if it exists in the current project). Restart Claude Code to activate.
+This writes the `statusLine` configuration into both:
+
+- `~/.claude/settings.json` (or `.claude/settings.json` if it exists in the current project)
+- `~/.cursor/cli-config.json` (created if missing; other Cursor keys are preserved)
+
+Restart Claude Code or Cursor to activate.
 
 Running `bunx barnuri/harness-status-line` interactively (without piped stdin) automatically launches the setup wizard.
 
@@ -56,6 +61,52 @@ Add this to your `~/.claude/settings.json`:
     "refreshInterval": 2000
   }
 }
+```
+
+Cursor CLI uses `~/.cursor/cli-config.json` instead (see **Cursor** below).
+
+## Cursor
+
+Cursor CLI is the same stdin command as Claude Code: it spawns `statusLine.command` on each refresh, pipes JSON, and displays ANSI stdout (multi-line wrapping is supported). `--setup` writes this file automatically.
+
+### Manual configuration
+
+Add this to `~/.cursor/cli-config.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bunx barnuri/harness-status-line",
+    "updateIntervalMs": 2000,
+    "timeoutMs": 2000
+  }
+}
+```
+
+`updateIntervalMs` is 2000 (not Cursor's 300 ms default) so the parser's git spawn does not run on every debounce tick. `padding` is omitted (Cursor default 0).
+
+### Field mapping
+
+| Segment | Cursor field | Notes |
+|---|---|---|
+| folder | `cwd` / `workspace.current_dir` | Basename only. `workspace.project_dir` is the transcript store and is not shown. |
+| worktree | `worktree.name` | Omitted when absent, or when the name equals the folder basename. |
+| slug | `session_id` → `~/.claude/session-slugs/<id>` | Falls back to `session_name` when no slug file exists. |
+| model | `model.display_name` | Appends `param_summary` and ` · max` when `max_mode` is true. |
+| vim | `vim.mode` | `NORMAL` / `INSERT`. Omitted when vim mode is off. |
+| ctx | `context_window.used_percentage` | Falls back to `remaining_percentage` when used is null. Turns yellow >60%, red >80%. |
+| autorun | `autorun` | Shown as `autorun: on` only when `true`. |
+| wrap width | `render_width_chars` | Preferred over `COLUMNS` / `stdout.columns` so Cursor's own padding is not double-counted. |
+
+Rate limits and the Claude “Sub” auth chip come from Claude-shaped `api` / `rate_limits` (or `ANTHROPIC_*` env). A stock Cursor payload has neither, so those segments are omitted.
+
+Hide the Cursor-only chips with `config set`:
+
+```bash
+bunx barnuri/harness-status-line config set segments.vim false
+bunx barnuri/harness-status-line config set segments.worktree false
+bunx barnuri/harness-status-line config set segments.autorun false
 ```
 
 ## Regenerate preview screenshots
@@ -79,16 +130,16 @@ bunx playwright install chromium
 
 ## How it works
 
-Claude Code pipes a `StatusJSON` blob to the command's stdin on every refresh. The tool parses it, extracts the relevant fields, and writes a colored, bold status line to stdout.
+Claude Code (and Cursor CLI) pipe a `StatusJSON` blob to the command's stdin on every refresh. The tool parses it, extracts the relevant fields, and writes a colored, bold status line to stdout.
 
 ```
-Claude Code runtime
+Claude Code / Cursor CLI
     ↓  StatusJSON (stdin)
 harness-status-line
     ↓  parse + extract metrics (StatusParser)
     ↓  render ANSI-colored segments with bold backgrounds (StatusRenderer)
-    ↓  wrap to terminal width — never truncate
-stdout → Claude Code status bar
+    ↓  wrap to terminal width (or Cursor render_width_chars) — never truncate
+stdout → status bar
 ```
 
 ## opencode
@@ -169,7 +220,7 @@ bun run src/index.ts --setup 2>&1 | grep "Status line configured"
 ## Requirements
 
 - [Bun](https://bun.sh) ≥ 1.0
-- Claude Code CLI
+- Claude Code CLI and/or Cursor CLI
 
 ## License
 

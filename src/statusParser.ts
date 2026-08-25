@@ -4,7 +4,6 @@ import { resolveSessionSlug } from './shared/sessionSlug.ts';
 import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
 
 export class StatusParser {
   private static readonly MINI_BAR_BLOCKS = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'] as const;
@@ -12,6 +11,11 @@ export class StatusParser {
   private static readonly KNOWN_RATE_LIMIT_KEYS: ReadonlyArray<string> = ['session', 'five_hour', 'week', 'seven_day', 'day'];
   private static readonly WORKFLOW_STALE_AFTER_SECONDS = 120;
   private static readonly CTX_VALUE_SEPARATOR = '·';
+  private static readonly MAX_MODE_SUFFIX = ' · max';
+  private static readonly AUTORUN_LABEL = 'autorun';
+  private static readonly AUTORUN_VALUE = 'on';
+  private static readonly CTX_PERCENT_MIN = 0;
+  private static readonly CTX_PERCENT_MAX = 100;
 
   parse(raw: string): StatusJSON {
     if (!raw.trim()) {
@@ -32,6 +36,13 @@ export class StatusParser {
       const folder = this.extractFolder(status);
       if (folder) {
         segments.push({ icon: '📁 ', label: '', value: folder, fg: colors.folder.fg, bg: colors.folder.bg });
+      }
+    }
+
+    if (visibility.worktree) {
+      const worktree = this.extractWorktree(status);
+      if (worktree) {
+        segments.push({ icon: '🌿 ', label: '', value: worktree, fg: colors.worktree.fg, bg: colors.worktree.bg });
       }
     }
 
@@ -59,6 +70,13 @@ export class StatusParser {
       }
     }
 
+    if (visibility.vim) {
+      const vimMode = this.extractVimMode(status);
+      if (vimMode) {
+        segments.push({ icon: '⌨ ', label: '', value: vimMode, fg: colors.vim.fg, bg: colors.vim.bg });
+      }
+    }
+
     const contextPercent = this.extractContextPercent(status);
 
     if (visibility.context && contextPercent !== null) {
@@ -83,6 +101,16 @@ export class StatusParser {
 
     if (visibility.workflow && this.extractWorkflowActive(status)) {
       segments.push({ icon: '⚙ ', label: 'workflow', value: 'active', fg: colors.workflow.fg, bg: colors.workflow.bg });
+    }
+
+    if (visibility.autorun && status.autorun === true) {
+      segments.push({
+        icon: '▶ ',
+        label: StatusParser.AUTORUN_LABEL,
+        value: StatusParser.AUTORUN_VALUE,
+        fg: colors.autorun.fg,
+        bg: colors.autorun.bg,
+      });
     }
 
     if (visibility.rateLimits) {
@@ -119,9 +147,17 @@ export class StatusParser {
       return { icon: '🔑 ', label: 'auth', value: display, fg: colors.authApi.fg, bg: colors.authApi.bg };
     }
 
+    if (this.isCursorPayload(status) && !status.api) {
+      return null;
+    }
+
     const plan = status.api?.plan;
     const value = plan ? (plan.charAt(0).toUpperCase() + plan.slice(1)) : 'Sub';
     return { icon: '✨ ', label: 'auth', value, fg: colors.authSubscription.fg, bg: colors.authSubscription.bg };
+  }
+
+  private isCursorPayload(status: StatusJSON): boolean {
+    return typeof status.render_width_chars === 'number' || typeof status.autorun === 'boolean';
   }
 
   private extractHostname(url: string): string {
@@ -180,7 +216,10 @@ export class StatusParser {
   }
 
   private extractSlug(status: StatusJSON): string | null {
-    return resolveSessionSlug(this.resolveSessionId(status));
+    const sessionName = typeof status.session_name === 'string' && status.session_name.length > 0
+      ? status.session_name
+      : null;
+    return resolveSessionSlug(this.resolveSessionId(status)) ?? sessionName;
   }
 
   private resolveSessionId(status: StatusJSON): string | undefined {
@@ -198,12 +237,31 @@ export class StatusParser {
     const raw = status.model;
     if (!raw) { return null; }
     if (typeof raw === 'string') { return raw; }
-    if (typeof raw === 'object') {
-      const obj = raw as Record<string, unknown>;
-      const val = obj['display_name'] ?? obj['name'] ?? obj['id'] ?? obj['modelId'] ?? obj['model'];
-      if (typeof val === 'string') { return val; }
+    const name = raw.display_name ?? raw.name ?? raw.id;
+    if (typeof name !== 'string' || name.length === 0) { return null; }
+    let value = name;
+    const summary = raw.param_summary;
+    if (typeof summary === 'string' && summary.length > 0) {
+      value = `${value} ${summary}`;
     }
-    return null;
+    if (raw.max_mode === true) {
+      value = `${value}${StatusParser.MAX_MODE_SUFFIX}`;
+    }
+    return value;
+  }
+
+  private extractWorktree(status: StatusJSON): string | null {
+    const name = status.worktree?.name;
+    if (!name) { return null; }
+    const folder = this.extractFolder(status);
+    if (folder !== null && name === folder) { return null; }
+    return name;
+  }
+
+  private extractVimMode(status: StatusJSON): string | null {
+    const mode = status.vim?.mode;
+    if (!mode) { return null; }
+    return mode;
   }
 
   private extractEffort(status: StatusJSON): string | null {
@@ -219,6 +277,10 @@ export class StatusParser {
     if (!ctx) { return null; }
     if (typeof ctx.used_percentage === 'number') { return Math.round(ctx.used_percentage); }
     if (typeof ctx.percentage === 'number') { return Math.round(ctx.percentage); }
+    if (typeof ctx.remaining_percentage === 'number') {
+      const used = Math.round(StatusParser.CTX_PERCENT_MAX - ctx.remaining_percentage);
+      return Math.max(StatusParser.CTX_PERCENT_MIN, Math.min(StatusParser.CTX_PERCENT_MAX, used));
+    }
     const tokens = ctx.total_input_tokens ?? ctx.tokens ?? ctx.token_count ?? ctx.input;
     const size = ctx.context_window_size ?? ctx.size;
     if (typeof tokens === 'number' && typeof size === 'number' && size > 0) {

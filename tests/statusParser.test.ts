@@ -2,7 +2,7 @@ import { describe, it, expect } from 'bun:test';
 import { StatusParser } from '../src/statusParser.ts';
 import { ConfigManager } from '../src/configManager.ts';
 import { writeWorkflowActiveState } from '../src/shared/workflowActiveState.ts';
-import type { Config } from '../src/types.ts';
+import type { Config, StatusJSON } from '../src/types.ts';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -809,5 +809,263 @@ describe('buildSegments() — ordering', () => {
         }
       }
     }
+  });
+});
+
+// ────────────────────────────────────────────────────────
+// buildSegments() — Cursor payload
+// ────────────────────────────────────────────────────────
+
+describe('buildSegments() — Cursor payload', () => {
+  const slugDir = path.join(os.homedir(), '.claude', 'session-slugs');
+  const SLUG_ENV_KEYS = [
+    'CURSOR_CONVERSATION_ID',
+    'CLAUDE_CODE_SESSION_ID',
+    'CODEX_THREAD_ID',
+    'GROK_SESSION_ID',
+    'GEMINI_SESSION_ID',
+    'DSH_SESSION_ID',
+    'DEEPSEEK_SESSION_ID',
+  ] as const;
+  const ANTHROPIC_ENV_KEYS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_SERVER_NAME'] as const;
+
+  function withClearedEnv(keys: readonly string[], run: () => void): void {
+    const saved: Record<string, string | undefined> = {};
+    for (const key of keys) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+    try {
+      run();
+    } finally {
+      for (const key of keys) {
+        const prev = saved[key];
+        if (prev === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = prev;
+        }
+      }
+    }
+  }
+
+  function writeSlugFile(sessionId: string, slug: string): void {
+    fs.mkdirSync(slugDir, { recursive: true });
+    fs.writeFileSync(path.join(slugDir, sessionId), slug + '\n', 'utf-8');
+  }
+
+  function removeSlugFile(sessionId: string): void {
+    try {
+      fs.unlinkSync(path.join(slugDir, sessionId));
+    } catch {
+      // already absent
+    }
+  }
+
+  it('parses a full Cursor skill-schema payload: folder, model, ctx; no auth or rate limits', () => {
+    withClearedEnv([...ANTHROPIC_ENV_KEYS, ...SLUG_ENV_KEYS], () => {
+      const status: StatusJSON = {
+        session_id: 'test-cursor-full-payload-session',
+        session_name: 'my session',
+        transcript_path: '/path/to/transcript.jsonl',
+        render_width_chars: 120,
+        cwd: '/Users/me/project',
+        autorun: false,
+        model: { id: 'claude-4-opus', display_name: 'Claude 4 Opus' },
+        workspace: {
+          current_dir: '/Users/me/project',
+          project_dir: '/Users/me/project/.cursor/transcripts',
+          added_dirs: [],
+        },
+        version: '1.2.3',
+        output_style: { name: 'default' },
+        context_window: { used_percentage: 34.5 },
+      };
+      const segs = parser.buildSegments(status, cfg);
+      expect(segs.find(s => s.icon === '📁 ')?.value).toBe('project');
+      expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Claude 4 Opus');
+      expect(segs.find(s => s.label === 'ctx')?.value).toBe('35%');
+      expect(segs.find(s => s.label === 'auth')).toBeUndefined();
+      expect(segs.find(s => s.label === 'session')).toBeUndefined();
+      expect(segs.find(s => s.icon === '⏱ ')).toBeUndefined();
+      expect(segs.find(s => s.label === 'autorun')).toBeUndefined();
+    });
+  });
+
+  it('appends param_summary and max_mode to the model value', () => {
+    const segs = parser.buildSegments({
+      model: { display_name: 'Sonnet 4.6', param_summary: '(Thinking)', max_mode: true },
+    }, cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Sonnet 4.6 (Thinking) · max');
+  });
+
+  it('uses remaining_percentage when used_percentage is null', () => {
+    const status: StatusJSON = {
+      context_window: { used_percentage: null, remaining_percentage: 25 },
+    };
+    const segs = parser.buildSegments(status, cfg);
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('75%');
+  });
+
+  it('clamps remaining_percentage-derived used percent to 0–100', () => {
+    const over: StatusJSON = {
+      context_window: { used_percentage: null, remaining_percentage: 150 },
+    };
+    const under: StatusJSON = {
+      context_window: { used_percentage: null, remaining_percentage: -10 },
+    };
+    expect(parser.buildSegments(over, cfg).find(s => s.label === 'ctx')?.value).toBe('0%');
+    expect(parser.buildSegments(under, cfg).find(s => s.label === 'ctx')?.value).toBe('100%');
+  });
+
+  it('omits ctx when both percentages are null and there is no token/size fallback', () => {
+    const status: StatusJSON = {
+      context_window: {
+        used_percentage: null,
+        remaining_percentage: null,
+        total_output_tokens: 5000,
+      },
+    };
+    const segs = parser.buildSegments(status, cfg);
+    expect(segs.find(s => s.label === 'ctx')).toBeUndefined();
+  });
+
+  it('includes vim.mode as sent', () => {
+    const segs = parser.buildSegments({ vim: { mode: 'NORMAL' } }, cfg);
+    const seg = segs.find(s => s.icon === '⌨ ');
+    expect(seg?.value).toBe('NORMAL');
+    expect(seg?.label).toBe('');
+    expect(seg?.bg).toEqual([29, 78, 216]);
+    expect(seg?.fg).toEqual([248, 250, 252]);
+  });
+
+  it('includes worktree.name when it differs from the folder basename', () => {
+    const segs = parser.buildSegments({
+      cwd: '/Users/me/project',
+      worktree: { name: 'my-feature', path: '/Users/me/.cursor/worktrees/repo/my-feature' },
+    }, cfg);
+    const seg = segs.find(s => s.icon === '🌿 ');
+    expect(seg?.value).toBe('my-feature');
+    expect(seg?.label).toBe('');
+    expect(seg?.bg).toEqual([194, 65, 12]);
+  });
+
+  it('skips worktree when name equals the folder basename', () => {
+    const segs = parser.buildSegments({
+      cwd: '/Users/me/project',
+      worktree: { name: 'project' },
+    }, cfg);
+    expect(segs.find(s => s.icon === '🌿 ')).toBeUndefined();
+  });
+
+  it('includes autorun when true and omits it when false', () => {
+    const on = parser.buildSegments({ autorun: true }, cfg).find(s => s.label === 'autorun');
+    expect(on?.icon).toBe('▶ ');
+    expect(on?.value).toBe('on');
+    expect(on?.bg).toEqual([190, 24, 93]);
+    expect(parser.buildSegments({ autorun: false }, cfg).find(s => s.label === 'autorun')).toBeUndefined();
+    expect(parser.buildSegments({}, cfg).find(s => s.label === 'autorun')).toBeUndefined();
+  });
+
+  it('emits Cursor-only segments in order: folder, worktree, slug, model, vim, autorun', () => {
+    withClearedEnv(SLUG_ENV_KEYS, () => {
+      const segs = parser.buildSegments({
+        cwd: '/repo/proj',
+        session_name: 'cursor-slug',
+        worktree: { name: 'feature-x' },
+        model: 'claude',
+        vim: { mode: 'INSERT' },
+        autorun: true,
+      }, cfg);
+      const icons = segs.map(s => s.icon);
+      expect(icons.indexOf('📁 ')).toBeLessThan(icons.indexOf('🌿 '));
+      expect(icons.indexOf('🌿 ')).toBeLessThan(icons.indexOf('🏷 '));
+      expect(icons.indexOf('🏷 ')).toBeLessThan(icons.indexOf('🤖 '));
+      expect(icons.indexOf('🤖 ')).toBeLessThan(icons.indexOf('⌨ '));
+      expect(icons.indexOf('⌨ ')).toBeLessThan(icons.indexOf('▶ '));
+      expect(segs.find(s => s.icon === '🏷 ')?.value).toBe('cursor-slug');
+      expect(segs.find(s => s.icon === '⌨ ')?.value).toBe('INSERT');
+    });
+  });
+
+  it('prefers a published session slug file over session_name', () => {
+    const sessionId = 'test-cursor-slug-file-wins';
+    writeSlugFile(sessionId, 'published-slug');
+    withClearedEnv(SLUG_ENV_KEYS, () => {
+      try {
+        const segs = parser.buildSegments({
+          session_id: sessionId,
+          session_name: 'fallback-name',
+        }, cfg);
+        expect(segs.find(s => s.icon === '🏷 ')?.value).toBe('published-slug');
+      } finally {
+        removeSlugFile(sessionId);
+      }
+    });
+  });
+
+  it('falls back to session_name when no slug file exists', () => {
+    const sessionId = 'test-cursor-session-name-fallback';
+    removeSlugFile(sessionId);
+    withClearedEnv(SLUG_ENV_KEYS, () => {
+      const segs = parser.buildSegments({
+        session_id: sessionId,
+        session_name: 'my session',
+      }, cfg);
+      expect(segs.find(s => s.icon === '🏷 ')?.value).toBe('my session');
+    });
+  });
+
+  it('omits default Sub auth on Cursor-shaped payloads', () => {
+    withClearedEnv(ANTHROPIC_ENV_KEYS, () => {
+      const authCfg = makeConfig({ segments: { ...cfg.segments, auth: true } });
+      expect(parser.buildSegments({ autorun: false }, authCfg).find(s => s.label === 'auth')).toBeUndefined();
+      expect(parser.buildSegments({ render_width_chars: 80 }, authCfg).find(s => s.label === 'auth')).toBeUndefined();
+    });
+  });
+
+  it('still shows Sub for Claude {} and object-model payloads without Cursor fields', () => {
+    withClearedEnv(ANTHROPIC_ENV_KEYS, () => {
+      const authCfg = makeConfig({ segments: { ...cfg.segments, auth: true } });
+      expect(parser.buildSegments({}, authCfg).find(s => s.label === 'auth')?.value).toBe('Sub');
+      expect(parser.buildSegments(
+        { model: { display_name: 'Sonnet' } },
+        authCfg,
+      ).find(s => s.label === 'auth')?.value).toBe('Sub');
+    });
+  });
+
+  it('still shows env-based API key auth on a Cursor-shaped payload', () => {
+    withClearedEnv(ANTHROPIC_ENV_KEYS, () => {
+      process.env['ANTHROPIC_API_KEY'] = 'sk-ant-api-123456789';
+      const authCfg = makeConfig({ segments: { ...cfg.segments, auth: true } });
+      const seg = parser.buildSegments({ autorun: false }, authCfg).find(s => s.label === 'auth');
+      expect(seg?.icon).toBe('🔑 ');
+      expect(seg?.value).toContain('API Key:');
+    });
+  });
+
+  it('hides vim, worktree, and autorun when their visibility flags are false', () => {
+    const config = makeConfig({
+      segments: { ...cfg.segments, vim: false, worktree: false, autorun: false },
+    });
+    const segs = parser.buildSegments({
+      cwd: '/repo/proj',
+      worktree: { name: 'feature-x' },
+      vim: { mode: 'INSERT' },
+      autorun: true,
+    }, config);
+    expect(segs.find(s => s.icon === '⌨ ')).toBeUndefined();
+    expect(segs.find(s => s.icon === '🌿 ')).toBeUndefined();
+    expect(segs.find(s => s.label === 'autorun')).toBeUndefined();
+  });
+
+  it('still renders a string model and context_window.percentage', () => {
+    const segs = parser.buildSegments({
+      model: 'claude-sonnet',
+      context_window: { percentage: 42 },
+    }, cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('claude-sonnet');
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('42%');
   });
 });

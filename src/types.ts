@@ -1,16 +1,18 @@
 export interface ContextWindow {
   readonly percentage?: number;
-  readonly used_percentage?: number;
-  readonly remaining_percentage?: number;
+  readonly used_percentage?: number | null;
+  readonly remaining_percentage?: number | null;
   readonly tokens?: number;
   readonly token_count?: number;
   readonly total_input_tokens?: number;
+  readonly total_output_tokens?: number | null;
   readonly size?: number;
   readonly context_window_size?: number;
   readonly input?: number;
   readonly output?: number;
   readonly cache_read?: number;
   readonly cache_creation?: number;
+  readonly current_usage?: unknown;
 }
 
 export interface RateLimit {
@@ -33,6 +35,28 @@ export interface RateLimits {
 export interface Workspace {
   readonly current_dir?: string;
   readonly project_dir?: string;
+  readonly added_dirs?: readonly string[];
+}
+
+export interface ModelInfo {
+  readonly id?: string;
+  readonly display_name?: string;
+  readonly name?: string;
+  readonly param_summary?: string;
+  readonly max_mode?: boolean;
+}
+
+export interface VimState {
+  readonly mode?: string;
+}
+
+export interface Worktree {
+  readonly name?: string;
+  readonly path?: string;
+}
+
+export interface OutputStyle {
+  readonly name?: string;
 }
 
 export interface ApiInfo {
@@ -49,15 +73,22 @@ export interface Effort {
 
 export interface StatusJSON {
   readonly cwd?: string;
-  readonly model?: unknown;
+  readonly model?: string | ModelInfo;
   readonly context_window?: ContextWindow;
   readonly rate_limits?: RateLimits;
   readonly workspace?: Workspace;
   readonly session_id?: string;
+  readonly session_name?: string;
+  readonly transcript_path?: string;
+  readonly render_width_chars?: number;
+  readonly autorun?: boolean;
   readonly hook_event_name?: string;
   readonly version?: string;
   readonly api?: ApiInfo;
   readonly effort?: Effort;
+  readonly output_style?: OutputStyle;
+  readonly vim?: VimState;
+  readonly worktree?: Worktree;
 }
 
 export interface SubagentTask {
@@ -122,6 +153,9 @@ export interface SegmentVisibility {
   readonly slug: boolean;
   readonly effort: boolean;
   readonly workflow: boolean;
+  readonly vim: boolean;
+  readonly worktree: boolean;
+  readonly autorun: boolean;
 }
 
 export interface SegmentColorMap {
@@ -139,6 +173,9 @@ export interface SegmentColorMap {
   readonly slug: SegmentColorConfig;
   readonly effort: SegmentColorConfig;
   readonly workflow: SegmentColorConfig;
+  readonly vim: SegmentColorConfig;
+  readonly worktree: SegmentColorConfig;
+  readonly autorun: SegmentColorConfig;
 }
 
 export interface Config {

@@ -56,17 +56,23 @@ Commands:
 Keys:
   separatorStyle              powerline | spaces
   segments.folder             true | false
+  segments.git                true | false
   segments.slug               true | false
   segments.model              true | false
   segments.context            true | false
+  segments.auth               true | false
   segments.rateLimits         true | false
   segments.effort             true | false
   segments.workflow           true | false
+  segments.vim                true | false
+  segments.worktree           true | false
+  segments.autorun            true | false
   refreshInterval             <milliseconds>
   colors.<segment>.<bg|fg>    <R,G,B>  (e.g. 30,41,59)
 
-Segments: folder, slug, model, ctxHealthy, ctxWarning, ctxCritical,
-          rateHealthy, rateWarning, rateCritical, effort, workflow
+Segments: folder, git, slug, model, ctxHealthy, ctxWarning, ctxCritical,
+          authSubscription, authApi, rateHealthy, rateWarning, rateCritical,
+          effort, workflow, vim, worktree, autorun
 
 Examples:
   config set separatorStyle spaces

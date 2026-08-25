@@ -38,7 +38,11 @@ class Application {
     const status = parser.parse(raw);
     const segments = parser.buildSegments(status, config);
 
-    const terminalWidth = this.resolveTerminalWidth();
+    const payloadWidth = status.render_width_chars;
+    const terminalWidth =
+      typeof payloadWidth === 'number' && payloadWidth > 0
+        ? Math.floor(payloadWidth)
+        : this.resolveTerminalWidth();
     const output = new StatusRenderer().render(segments, terminalWidth, config);
 
     if (output) {

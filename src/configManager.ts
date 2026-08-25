@@ -20,6 +20,9 @@ export class ConfigManager {
       slug: true,
       effort: true,
       workflow: true,
+      vim: true,
+      worktree: true,
+      autorun: true,
     },
     colors: {
       folder:           { bg: [30, 41, 59],   fg: [248, 250, 252] },
@@ -36,6 +39,9 @@ export class ConfigManager {
       slug:             { bg: [88, 28, 135],  fg: [248, 250, 252] },
       effort:           { bg: [55, 48, 163],  fg: [248, 250, 252] },
       workflow:         { bg: [15, 118, 110], fg: [248, 250, 252] },
+      vim:              { bg: [29, 78, 216],  fg: [248, 250, 252] },
+      worktree:         { bg: [194, 65, 12],  fg: [248, 250, 252] },
+      autorun:          { bg: [190, 24, 93],  fg: [248, 250, 252] },
     },
   };
 

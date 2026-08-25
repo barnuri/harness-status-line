@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A Bun/TypeScript Claude Code status line. Reads `StatusJSON` from stdin (piped by Claude Code on each refresh) and writes a colored, wrapped status line to stdout.
+A Bun/TypeScript Claude Code status line. Reads `StatusJSON` from stdin (piped by Claude Code or Cursor CLI on each refresh) and writes a colored, wrapped status line to stdout.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ src/
   types.ts          — StatusJSON, Segment, ANSI color constants
   statusParser.ts   — StatusParser: JSON → typed segments with icons and color rules
   statusRenderer.ts — StatusRenderer: segments → ANSI string with terminal-width wrapping
-  setupWizard.ts    — SetupWizard: writes statusLine config into ~/.claude/settings.json
+  setupWizard.ts    — SetupWizard: writes statusLine into ~/.claude/settings.json and ~/.cursor/cli-config.json
 scripts/
   preview.ts        — Generates docs/preview.html (static multi-scenario preview)
   animated-preview.ts — Generates docs/animated.html (CSS-animated cycling preview)
@@ -20,6 +20,7 @@ scripts/
 tests/
   statusParser.test.ts
   statusRenderer.test.ts
+  setupWizard.test.ts
 docs/
   screenshot-all-scenarios.png  — Static screenshot (Playwright)
   demo.gif                      — Animated GIF (VHS)
@@ -28,8 +29,8 @@ docs/
 ## Key Behaviours
 
 - **Render mode**: stdin is piped → parse JSON → render segments → write to stdout.
-- **Setup mode**: `--setup` flag or interactive TTY → run `SetupWizard`.
-- **Wrapping**: segments wrap to additional lines when total width exceeds `process.stdout.columns` (or `COLUMNS` env var). Info is never truncated.
+- **Setup mode**: `--setup` flag or interactive TTY → run `SetupWizard` (writes Claude settings and Cursor `cli-config.json`).
+- **Wrapping**: segments wrap to additional lines when total width exceeds `render_width_chars` (Cursor) or else `process.stdout.columns` / `COLUMNS`. Info is never truncated.
 - **Color coding**: context turns yellow >60%, red >80%; rate limits turn yellow <50% remaining, red <20%.
 
 ## Running
@@ -75,7 +76,7 @@ bun run src/index.ts --setup 2>&1 | grep -q "Status line configured" && echo "se
 Expected outcomes:
 - `bun test` passes with ≥ 90% line coverage on `statusParser.ts` and `statusRenderer.ts`.
 - Empty JSON → no output, exit 0.
-- `--setup` → writes `statusLine` key into `~/.claude/settings.json`.
+- `--setup` → writes `statusLine` into `~/.claude/settings.json` and `~/.cursor/cli-config.json`.
 
 ## Claude Code Integration
 
@@ -92,3 +93,20 @@ Claude Code reads `statusLine` from `~/.claude/settings.json` or `.claude/settin
 ```
 
 The `StatusJSON` schema Claude Code pipes is documented in `src/types.ts`.
+
+## Cursor CLI Integration
+
+Cursor CLI reads `statusLine` from `~/.cursor/cli-config.json`. `--setup` writes both this file and the Claude settings above.
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bunx barnuri/harness-status-line",
+    "updateIntervalMs": 2000,
+    "timeoutMs": 2000
+  }
+}
+```
+
+Cursor's payload uses `model.display_name`, `context_window.used_percentage`, and `render_width_chars` (preferred wrap width). Optional `vim`, `worktree`, and `autorun` segments omit when absent. A stock Cursor payload has no `api` / `rate_limits`, so auth and quota chips are not shown.
