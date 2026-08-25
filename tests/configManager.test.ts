@@ -32,7 +32,6 @@ describe('ConfigManager — DEFAULT_CONFIG', () => {
     expect(segments.folder).toBe(true);
     expect(segments.model).toBe(true);
     expect(segments.context).toBe(true);
-    expect(segments.tokens).toBe(true);
     expect(segments.rateLimits).toBe(true);
   });
 
@@ -42,7 +41,7 @@ describe('ConfigManager — DEFAULT_CONFIG', () => {
 
   it('DEFAULT_CONFIG has all required color keys', () => {
     const { colors } = ConfigManager.DEFAULT_CONFIG;
-    for (const key of ['folder', 'model', 'ctxHealthy', 'ctxWarning', 'ctxCritical', 'tokens', 'rateHealthy', 'rateWarning', 'rateCritical']) {
+    for (const key of ['folder', 'model', 'ctxHealthy', 'ctxWarning', 'ctxCritical', 'rateHealthy', 'rateWarning', 'rateCritical']) {
       const c = colors[key as keyof typeof colors];
       expect(c.bg).toHaveLength(3);
       expect(c.fg).toHaveLength(3);
@@ -79,7 +78,6 @@ describe('ConfigManager — load()', () => {
     expect(config.segments.folder).toBe(false);
     expect(config.segments.model).toBe(true);
     expect(config.segments.context).toBe(true);
-    expect(config.segments.tokens).toBe(true);
     expect(config.segments.rateLimits).toBe(true);
   });
 
@@ -172,7 +170,6 @@ describe('ConfigManager — set() — nested keys', () => {
     const manager = new ConfigManager();
     const config = manager.set('segments.rateLimits', 'false');
     expect(config.segments.rateLimits).toBe(false);
-    expect(config.segments.tokens).toBe(true);
   });
 
   it('persists nested set to file', () => {
@@ -202,9 +199,9 @@ describe('ConfigManager — set() — RGB color keys', () => {
 
   it('persists color change to file', () => {
     const manager = new ConfigManager();
-    manager.set('colors.tokens.fg', '0,0,0');
+    manager.set('colors.effort.fg', '0,0,0');
     const saved = readConfigFile();
-    expect(saved.colors.tokens.fg).toEqual([0, 0, 0]);
+    expect(saved.colors.effort.fg).toEqual([0, 0, 0]);
   });
 });
 
@@ -255,7 +252,6 @@ describe('ConfigManager — deep merge invariants', () => {
     expect(config.segments.folder).toBe(false);
     expect(config.segments.model).toBe(false);
     expect(config.segments.context).toBe(true);
-    expect(config.segments.tokens).toBe(true);
     expect(config.segments.rateLimits).toBe(true);
   });
 

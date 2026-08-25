@@ -1,5 +1,5 @@
 import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap } from './types.ts';
-import { formatTokenCount } from './shared/tokenFormat.ts';
+import { formatTokenCount, formatTokenPair } from './shared/tokenFormat.ts';
 import { resolveSessionSlug } from './shared/sessionSlug.ts';
 import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
 import * as path from 'path';
@@ -11,6 +11,7 @@ export class StatusParser {
   private static readonly MINI_BAR_WIDTH = 5;
   private static readonly KNOWN_RATE_LIMIT_KEYS: ReadonlyArray<string> = ['session', 'five_hour', 'week', 'seven_day', 'day'];
   private static readonly WORKFLOW_STALE_AFTER_SECONDS = 120;
+  private static readonly CTX_VALUE_SEPARATOR = '·';
 
   parse(raw: string): StatusJSON {
     if (!raw.trim()) {
@@ -62,16 +63,8 @@ export class StatusParser {
 
     if (visibility.context && contextPercent !== null) {
       const colorConfig = this.ctxColor(contextPercent, colors);
-      segments.push({ icon: '⏳ ', label: 'ctx', value: `${contextPercent}%`, fg: colorConfig.fg, bg: colorConfig.bg });
-    }
-
-    if (visibility.tokens) {
-      const tokenCount = this.extractTokenCount(status);
-      if (tokenCount !== null) {
-        const pctSuffix = visibility.context && contextPercent !== null ? ` ${contextPercent}%` : '';
-        const value = `${formatTokenCount(tokenCount)}${pctSuffix}`;
-        segments.push({ icon: '🔢 ', label: 'tokens', value, fg: colors.tokens.fg, bg: colors.tokens.bg });
-      }
+      const value = this.formatContextValue(status, contextPercent);
+      segments.push({ icon: '⏳ ', label: 'ctx', value, fg: colorConfig.fg, bg: colorConfig.bg });
     }
 
     if (visibility.auth) {
@@ -232,6 +225,22 @@ export class StatusParser {
       return Math.round((tokens / size) * 100);
     }
     return null;
+  }
+
+  private formatContextValue(status: StatusJSON, percent: number): string {
+    const tokens = this.extractTokenCount(status);
+    if (typeof tokens !== 'number' || !Number.isFinite(tokens)) { return `${percent}%`; }
+    const size = this.extractContextWindowSize(status);
+    const absolute = size === null ? formatTokenCount(tokens) : formatTokenPair(tokens, size);
+    return `${percent}% ${StatusParser.CTX_VALUE_SEPARATOR} ${absolute}`;
+  }
+
+  private extractContextWindowSize(status: StatusJSON): number | null {
+    const ctx = status.context_window;
+    if (!ctx) { return null; }
+    const size = ctx.context_window_size ?? ctx.size;
+    if (typeof size !== 'number' || size <= 0) { return null; }
+    return size;
   }
 
   private extractTokenCount(status: StatusJSON): number | null {

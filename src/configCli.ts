@@ -59,14 +59,13 @@ Keys:
   segments.slug               true | false
   segments.model              true | false
   segments.context            true | false
-  segments.tokens             true | false
   segments.rateLimits         true | false
   segments.effort             true | false
   segments.workflow           true | false
   refreshInterval             <milliseconds>
   colors.<segment>.<bg|fg>    <R,G,B>  (e.g. 30,41,59)
 
-Segments: folder, slug, model, ctxHealthy, ctxWarning, ctxCritical, tokens,
+Segments: folder, slug, model, ctxHealthy, ctxWarning, ctxCritical,
           rateHealthy, rateWarning, rateCritical, effort, workflow
 
 Examples:

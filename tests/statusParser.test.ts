@@ -458,12 +458,12 @@ describe('buildSegments() — context segment colors', () => {
 
   it('computes percentage from tokens + size', () => {
     const segs = parser.buildSegments({ context_window: { tokens: 50, size: 100 } }, cfg);
-    expect(segs.find(s => s.label === 'ctx')?.value).toBe('50%');
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('50% · 50/100');
   });
 
   it('uses used_percentage from actual Claude Code context_window format', () => {
     const segs = parser.buildSegments({ context_window: { used_percentage: 60, total_input_tokens: 120000, context_window_size: 200000 } }, cfg);
-    expect(segs.find(s => s.label === 'ctx')?.value).toBe('60%');
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('60% · 120k/200k');
   });
 
   it('used_percentage takes priority over percentage', () => {
@@ -483,62 +483,41 @@ describe('buildSegments() — context segment colors', () => {
   });
 });
 
-// ────────────────────────────────────────────────────────
-// buildSegments() — tokens + mini-bar
-// ────────────────────────────────────────────────────────
+describe('buildSegments() — context absolute size', () => {
+  function ctxValue(context_window: Record<string, number>): string | undefined {
+    return parser.buildSegments({ context_window }, cfg).find(s => s.label === 'ctx')?.value;
+  }
 
-describe('buildSegments() — tokens + mini-bar', () => {
-  it('formats token count in k notation', () => {
-    const segs = parser.buildSegments({ context_window: { tokens: 45200 } }, cfg);
-    expect(segs.find(s => s.label === 'tokens')?.value).toContain('45.2k');
+  it('appends used/total tokens scaled to a shared unit', () => {
+    expect(ctxValue({ total_input_tokens: 420_000, context_window_size: 1_000_000 })).toBe('42% · 0.42M/1M');
   });
 
-  it('reads total_input_tokens from actual Claude Code context_window format', () => {
-    const segs = parser.buildSegments({ context_window: { total_input_tokens: 120166, context_window_size: 200000 } }, cfg);
-    expect(segs.find(s => s.label === 'tokens')?.value).toContain('120.2k');
+  it('uses the k unit when the window is under 1M tokens', () => {
+    expect(ctxValue({ used_percentage: 75, token_count: 150_000, size: 200_000 })).toBe('75% · 150k/200k');
   });
 
-  it('total_input_tokens takes priority over tokens', () => {
-    const segs = parser.buildSegments({ context_window: { total_input_tokens: 80000, tokens: 50000 } }, cfg);
-    expect(segs.find(s => s.label === 'tokens')?.value).toContain('80.0k');
+  it('shows the percentage alone when no token count is available', () => {
+    expect(ctxValue({ percentage: 42 })).toBe('42%');
   });
 
-  it('formats token count in M notation for millions', () => {
-    const segs = parser.buildSegments({ context_window: { tokens: 1_500_000 } }, cfg);
-    expect(segs.find(s => s.label === 'tokens')?.value).toContain('1.5M');
+  it('shows a bare compact token count when the window size is unknown', () => {
+    expect(ctxValue({ percentage: 42, tokens: 420_000 })).toBe('42% · 420.0k');
   });
 
-  it('appends mini-bar when context percent is available', () => {
-    const segs = parser.buildSegments({ context_window: { tokens: 45000, percentage: 45 } }, cfg);
-    const val = segs.find(s => s.label === 'tokens')?.value ?? '';
-    expect(val).toContain('45.0k');
-    expect(val.length).toBeGreaterThan(6);
+  it('ignores a non-positive window size and falls back to the bare count', () => {
+    expect(ctxValue({ percentage: 42, tokens: 420_000, size: 0 })).toBe('42% · 420.0k');
   });
 
-  it('omits mini-bar when visibility.context is false even when percent is available', () => {
-    const config = makeConfig({ segments: { ...cfg.segments, context: false } });
-    const segs = parser.buildSegments({ context_window: { tokens: 45000, percentage: 45 } }, config);
-    const val = segs.find(s => s.label === 'tokens')?.value ?? '';
-    expect(val).not.toMatch(/[▏▎▍▌▋▊▉█]/);
+  it('prefers context_window_size over size', () => {
+    expect(ctxValue({ percentage: 30, tokens: 300_000, context_window_size: 1_000_000, size: 200_000 })).toBe('30% · 0.3M/1M');
   });
 
-  it('omits mini-bar when context percent is unavailable (tokens only, no size)', () => {
-    const segs = parser.buildSegments({ context_window: { tokens: 45000 } }, cfg);
-    const val = segs.find(s => s.label === 'tokens')?.value ?? '';
-    expect(val).not.toMatch(/[▏▎▍▌▋▊▉█]/);
+  it('prefers total_input_tokens over tokens', () => {
+    expect(ctxValue({ percentage: 40, total_input_tokens: 80_000, tokens: 50_000, size: 200_000 })).toBe('40% · 80k/200k');
   });
 
-  it('uses tokens bg/fg from config', () => {
-    const segs = parser.buildSegments({ context_window: { tokens: 10000 } }, cfg);
-    const seg = segs.find(s => s.label === 'tokens')!;
-    expect(seg.bg).toEqual(cfg.colors.tokens.bg);
-    expect(seg.fg).toEqual(cfg.colors.tokens.fg);
-  });
-
-  it('omits tokens segment when visibility.tokens is false', () => {
-    const config = makeConfig({ segments: { ...cfg.segments, tokens: false } });
-    const segs = parser.buildSegments({ context_window: { tokens: 50000 } }, config);
-    expect(segs.find(s => s.label === 'tokens')).toBeUndefined();
+  it('resolves the token count through the total_input_tokens/tokens/token_count/input chain', () => {
+    expect(ctxValue({ percentage: 10, input: 100_000, size: 1_000_000 })).toBe('10% · 0.1M/1M');
   });
 });
 
@@ -790,7 +769,7 @@ describe('buildSegments() — auth segment', () => {
 // ────────────────────────────────────────────────────────
 
 describe('buildSegments() — ordering', () => {
-  it('emits segments in order: folder, git, model, ctx, tokens, auth, rate limits', () => {
+  it('emits segments in order: folder, git, model, ctx, auth, rate limits', () => {
     const slugEnvKeys = [
       'CURSOR_CONVERSATION_ID',
       'CLAUDE_CODE_SESSION_ID',
@@ -818,9 +797,8 @@ describe('buildSegments() — ordering', () => {
       expect(icons[1]).toBe('⎇ ');
       expect(icons[2]).toBe('🤖 ');
       expect(icons[3]).toBe('⏳ ');
-      expect(icons[4]).toBe('🔢 ');
-      expect(icons[5]).toBe('✨ ');
-      expect(icons[6]).toBe('⏱ ');
+      expect(icons[4]).toBe('✨ ');
+      expect(icons[5]).toBe('⏱ ');
     } finally {
       for (const key of slugEnvKeys) {
         const prev = saved[key];

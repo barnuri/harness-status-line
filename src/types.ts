@@ -117,7 +117,6 @@ export interface SegmentVisibility {
   readonly git: boolean;
   readonly model: boolean;
   readonly context: boolean;
-  readonly tokens: boolean;
   readonly auth: boolean;
   readonly rateLimits: boolean;
   readonly slug: boolean;
@@ -132,7 +131,6 @@ export interface SegmentColorMap {
   readonly ctxHealthy: SegmentColorConfig;
   readonly ctxWarning: SegmentColorConfig;
   readonly ctxCritical: SegmentColorConfig;
-  readonly tokens: SegmentColorConfig;
   readonly authSubscription: SegmentColorConfig;
   readonly authApi: SegmentColorConfig;
   readonly rateHealthy: SegmentColorConfig;

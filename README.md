@@ -28,8 +28,7 @@ A Claude Code status line built with Bun/TypeScript. Shows real-time session inf
 |---|---|---|
 | **📁 folder** | Blue bg | Current working directory basename |
 | **🤖 model** | Purple bg | Claude model name (e.g. `claude-sonnet-4-6`) |
-| **ctx: N%** | Green/Yellow/Red bg | Context window usage % — turns yellow >60%, red >80% |
-| **tokens: N** | Dark bg | Total input token count (formatted as `k` / `M`) |
+| **ctx: N% · used/total** | Green/Yellow/Red bg | Context window usage % plus the absolute size in tokens (`0.42M/1M`, both scaled to one unit) — turns yellow >60%, red >80% |
 | **session: N%** | Cyan/Yellow/Red bg | Remaining session quota % — turns yellow <50%, red <20% |
 | **week: N%** | Cyan/Yellow/Red bg | Remaining weekly quota % |
 
@@ -121,7 +120,7 @@ Then restart opencode — config is read once at startup.
 | slug | `~/.claude/session-slugs/<session id>` — the same file the Claude status line reads |
 | git branch | derived from the folder by the shared parser |
 | model | `api.state.provider[…].models[modelID].name` for the newest assistant message |
-| context % / tokens | that message's `tokens` (`total`, else input + output + reasoning + cache) against the model's `limit.context` |
+| context % / size | that message's `tokens` (`total`, else input + output + reasoning + cache) against the model's `limit.context` |
 | auth, rate limits | `~/.claude/usage-snapshot.json` |
 
 Rate limits are Claude-specific and never reach opencode, so they are read from the snapshot that
@@ -134,7 +133,7 @@ still renders.
 - **No powerline separators.** An opencode slot is a component tree, not a character stream, so
   segments render as padded coloured boxes instead of `` glyph joins. Wrapping is handled by
   the TUI's own flex layout rather than this repo's width calculation.
-- Model, context, and token segments only appear once a session has an assistant message; on the
+- Model and context segments only appear once a session has an assistant message; on the
   opencode home screen there is nothing to report yet.
 
 ## Development

@@ -70,29 +70,28 @@ describe('OpencodeStatusSource.build()', () => {
       const status = source.build({ contextTokens: 45_000, contextWindowSize: 200_000 }, null);
       expect(status.context_window).toEqual({ tokens: 45_000, size: 200_000 });
 
-      const config = configWith({ auth: false, git: false, slug: false, folder: false, tokens: false });
+      const config = configWith({ auth: false, git: false, slug: false, folder: false });
       const segments = parser.buildSegments(status, config);
       expect(segments).toHaveLength(1);
-      expect(segments[0]?.value).toBe('23%');
+      expect(segments[0]?.value).toBe('23% · 45k/200k');
     });
 
-    it('renders the token segment with a formatted count', () => {
+    it('omits the context segment when context visibility is off', () => {
       const config = configWith({ auth: false, git: false, slug: false, folder: false, context: false });
       const segments = parser.buildSegments(
         source.build({ contextTokens: 45_000, contextWindowSize: 200_000 }, null),
         config,
       );
-      expect(segments).toHaveLength(1);
-      expect(segments[0]?.value).toBe('45.0k');
+      expect(segments).toEqual([]);
     });
 
-    it('appends the context percentage to the token segment when both are visible', () => {
+    it('renders the token count next to the percentage when the size is known', () => {
       const config = configWith({ auth: false, git: false, slug: false, folder: false });
       const segments = parser.buildSegments(
         source.build({ contextTokens: 45_000, contextWindowSize: 200_000 }, null),
         config,
       );
-      expect(segments.map((s) => s.value)).toEqual(['23%', '45.0k 23%']);
+      expect(segments.map((s) => s.value)).toEqual(['23% · 45k/200k']);
     });
 
     it('omits context_window entirely when neither tokens nor size are given', () => {
@@ -145,8 +144,8 @@ describe('OpencodeStatusSource.build()', () => {
       const config = configWith({ auth: false, git: false, slug: false, folder: false });
       const input = { contextTokens: 10_000, contextWindowSize: 100_000 };
 
-      expect(labelsOf(config, input, FRESH_SNAPSHOT)).toEqual(['ctx', 'tokens', 'daily', 'weekly']);
-      expect(labelsOf(config, input, null)).toEqual(['ctx', 'tokens']);
+      expect(labelsOf(config, input, FRESH_SNAPSHOT)).toEqual(['ctx', 'daily', 'weekly']);
+      expect(labelsOf(config, input, null)).toEqual(['ctx']);
     });
 
     it('keeps api absent when the snapshot carries a null api', () => {
@@ -157,7 +156,7 @@ describe('OpencodeStatusSource.build()', () => {
   });
 
   describe('segment ordering', () => {
-    it('emits folder, model, ctx, tokens, auth, then rate limits', () => {
+    it('emits folder, model, ctx, auth, then rate limits', () => {
       const config = configWith({ git: false, slug: false });
       const status = source.build(
         {
@@ -169,7 +168,7 @@ describe('OpencodeStatusSource.build()', () => {
         FRESH_SNAPSHOT,
       );
       const segments = parser.buildSegments(status, config);
-      expect(segments.map((s) => s.label)).toEqual(['', '', 'ctx', 'tokens', 'auth', 'daily', 'weekly']);
+      expect(segments.map((s) => s.label)).toEqual(['', '', 'ctx', 'auth', 'daily', 'weekly']);
       expect(segments[0]?.value).toBe('my-project');
       expect(segments[1]?.value).toBe('claude-opus-5');
     });
