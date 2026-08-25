@@ -107,9 +107,11 @@ Add this to `~/.cursor/cli-config.json`:
 | vim | `vim.mode` | `NORMAL` / `INSERT`. Omitted when vim mode is off. |
 | ctx | `context_window.used_percentage` | Falls back to `remaining_percentage` when used is null. Turns yellow >60%, red >80%. |
 | autorun | `autorun` | Shown as `autorun: on` only when `true`. |
+| credits | Cached Cursor usage (not on stdin) | Pro/Team dollar plans: remaining included spend, e.g. `$12.30 left`. Enterprise/request plans: remaining or used/limit from `/auth/usage`, e.g. `200 left` or `1016/1000`. Fetched in the background with the signed-in session (macOS keychain `cursor-access-token`, or the IDE `state.vscdb`) and cached at `~/.config/harness-status-line/cursor-usage.json`. |
+| daily / weekly | Cursor usage windows when present | Same chips as Claude `rate_limits`. Omitted when the account only has a billing-cycle or monthly request pool. |
 | wrap width | `render_width_chars` | Preferred over `COLUMNS` / `stdout.columns` so Cursor's own padding is not double-counted. |
 
-Rate limits and the Claude “Sub” auth chip come from Claude-shaped `api` / `rate_limits` (or `ANTHROPIC_*` env). A stock Cursor payload has neither, so those segments are omitted.
+The Claude “Sub” auth chip is omitted on a stock Cursor payload. Hide quota chips with `config set segments.rateLimits false`.
 
 Hide the Cursor-only chips with `config set`:
 

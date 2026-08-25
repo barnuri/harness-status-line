@@ -7,6 +7,7 @@ import { SetupWizard } from './setupWizard.ts';
 import { UpdateChecker } from './updateChecker.ts';
 import { ConfigManager } from './configManager.ts';
 import { ConfigCli } from './configCli.ts';
+import { CursorStatusEnricher } from './shared/cursorStatusEnricher.ts';
 
 class Application {
   async run(): Promise<void> {
@@ -35,7 +36,8 @@ class Application {
       });
     }
     const parser = new StatusParser();
-    const status = parser.parse(raw);
+    const parsed = parser.parse(raw);
+    const status = new CursorStatusEnricher().apply(parsed);
     const segments = parser.buildSegments(status, config);
 
     const payloadWidth = status.render_width_chars;

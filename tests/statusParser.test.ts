@@ -603,7 +603,7 @@ describe('buildSegments() — rate limit segments', () => {
 
   it('week icon is 📅', () => {
     const segs = parser.buildSegments({ rate_limits: { week: { remaining: 80, limit: 100 } } }, cfg);
-    expect(segs.find(s => s.label === 'week')?.icon).toBe('📅 ');
+    expect(segs.find(s => s.label === 'weekly')?.icon).toBe('📅 ');
   });
 
   it('unknown key icon defaults to ⚡', () => {
@@ -630,9 +630,9 @@ describe('buildSegments() — rate limit segments', () => {
     const segs = parser.buildSegments({
       rate_limits: { custom: { remaining: 80, limit: 100 }, session: { remaining: 50, limit: 100 }, week: { remaining: 60, limit: 100 } },
     }, cfg);
-    const labels = segs.filter(s => ['session', 'week', 'custom'].includes(s.label)).map(s => s.label);
+    const labels = segs.filter(s => ['session', 'weekly', 'custom'].includes(s.label)).map(s => s.label);
     expect(labels.indexOf('session')).toBeLessThan(labels.indexOf('custom'));
-    expect(labels.indexOf('week')).toBeLessThan(labels.indexOf('custom'));
+    expect(labels.indexOf('weekly')).toBeLessThan(labels.indexOf('custom'));
   });
 
   it('omits rate limit segments when visibility.rateLimits is false', () => {
@@ -1058,6 +1058,42 @@ describe('buildSegments() — Cursor payload', () => {
     expect(segs.find(s => s.icon === '⌨ ')).toBeUndefined();
     expect(segs.find(s => s.icon === '🌿 ')).toBeUndefined();
     expect(segs.find(s => s.label === 'autorun')).toBeUndefined();
+  });
+
+  it('shows remaining Cursor credits and daily/weekly windows', () => {
+    const segs = parser.buildSegments({
+      autorun: false,
+      credits: { remaining: 12.3, used_percentage: 20, unit: 'usd' },
+      rate_limits: { day: { used_percentage: 15 }, week: { used_percentage: 40 } },
+    }, cfg);
+    expect(segs.find(s => s.label === 'credits')?.value).toBe('$12.30 left');
+    expect(segs.find(s => s.label === 'daily')?.value).toBe('15% used');
+    expect(segs.find(s => s.label === 'weekly')?.value).toBe('40% used');
+  });
+
+  it('shows Cursor request quota used/limit when over the pool', () => {
+    const segs = parser.buildSegments({
+      autorun: false,
+      credits: { used: 1016, limit: 1000, remaining: 0, used_percentage: 102, unit: 'requests' },
+    }, cfg);
+    expect(segs.find(s => s.label === 'credits')?.value).toBe('1016/1000');
+  });
+
+  it('shows remaining Cursor request quota when under the pool', () => {
+    const segs = parser.buildSegments({
+      autorun: false,
+      credits: { used: 200, limit: 1000, remaining: 800, unit: 'requests' },
+    }, cfg);
+    expect(segs.find(s => s.label === 'credits')?.value).toBe('800 left');
+  });
+
+  it('omits credits when rateLimits visibility is false', () => {
+    const config = makeConfig({ segments: { ...cfg.segments, rateLimits: false } });
+    const segs = parser.buildSegments({
+      autorun: false,
+      credits: { remaining: 12.3, unit: 'usd' },
+    }, config);
+    expect(segs.find(s => s.label === 'credits')).toBeUndefined();
   });
 
   it('still renders a string model and context_window.percentage', () => {

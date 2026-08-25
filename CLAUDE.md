@@ -109,4 +109,4 @@ Cursor CLI reads `statusLine` from `~/.cursor/cli-config.json`. `--setup` writes
 }
 ```
 
-Cursor's payload uses `model.display_name`, `context_window.used_percentage`, and `render_width_chars` (preferred wrap width). Optional `vim`, `worktree`, and `autorun` segments omit when absent. A stock Cursor payload has no `api` / `rate_limits`, so auth and quota chips are not shown.
+Cursor's payload uses `model.display_name`, `context_window.used_percentage`, and `render_width_chars` (preferred wrap width). Optional `vim`, `worktree`, and `autorun` segments omit when absent. Quota chips come from a background Cursor usage fetch (plan spend, `/auth/usage` request pool, plus daily/weekly windows when the API sends them), not from stdin.

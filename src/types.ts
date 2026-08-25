@@ -71,6 +71,17 @@ export interface Effort {
   readonly level?: EffortLevel;
 }
 
+export type CreditUnit = 'usd' | 'requests';
+
+export interface CreditBalance {
+  readonly remaining?: number;
+  readonly used?: number;
+  readonly limit?: number;
+  readonly used_percentage?: number;
+  readonly unit?: CreditUnit;
+  readonly resets_at?: number;
+}
+
 export interface StatusJSON {
   readonly cwd?: string;
   readonly model?: string | ModelInfo;
@@ -89,6 +100,7 @@ export interface StatusJSON {
   readonly output_style?: OutputStyle;
   readonly vim?: VimState;
   readonly worktree?: Worktree;
+  readonly credits?: CreditBalance;
 }
 
 export interface SubagentTask {
@@ -130,6 +142,7 @@ export interface OpencodeStatusInput {
 export interface UsageSnapshot {
   readonly api?: ApiInfo | null;
   readonly rate_limits?: RateLimits;
+  readonly credits?: CreditBalance;
   readonly session_id?: string;
   readonly captured_at?: string;
 }

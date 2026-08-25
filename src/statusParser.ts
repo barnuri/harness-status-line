@@ -1,4 +1,4 @@
-import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap } from './types.ts';
+import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance } from './types.ts';
 import { formatTokenCount, formatTokenPair } from './shared/tokenFormat.ts';
 import { resolveSessionSlug } from './shared/sessionSlug.ts';
 import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
@@ -16,6 +16,9 @@ export class StatusParser {
   private static readonly AUTORUN_VALUE = 'on';
   private static readonly CTX_PERCENT_MIN = 0;
   private static readonly CTX_PERCENT_MAX = 100;
+  private static readonly CREDITS_LABEL = 'credits';
+  private static readonly CREDITS_ICON = '💳 ';
+  private static readonly DOLLAR_DECIMALS = 2;
 
   parse(raw: string): StatusJSON {
     if (!raw.trim()) {
@@ -114,6 +117,10 @@ export class StatusParser {
     }
 
     if (visibility.rateLimits) {
+      const credits = this.buildCreditsSegment(status, colors);
+      if (credits) {
+        segments.push(credits);
+      }
       segments.push(...this.extractRateLimits(status, colors));
     }
 
@@ -311,6 +318,66 @@ export class StatusParser {
     return ctx.total_input_tokens ?? ctx.tokens ?? ctx.token_count ?? ctx.input ?? null;
   }
 
+  private buildCreditsSegment(status: StatusJSON, colors: SegmentColorMap): Segment | null {
+    const credits = status.credits;
+    if (!credits) {
+      return null;
+    }
+    const value = this.formatCredits(credits);
+    if (!value) {
+      return null;
+    }
+    const pct = this.creditUsedPercent(credits);
+    const colorConfig = pct === null
+      ? colors.rateHealthy
+      : pct > 80
+        ? colors.rateCritical
+        : pct > 50
+          ? colors.rateWarning
+          : colors.rateHealthy;
+    const reset = credits.resets_at ? ` ~${this.formatResetTime(credits.resets_at)}` : '';
+    return {
+      icon: StatusParser.CREDITS_ICON,
+      label: StatusParser.CREDITS_LABEL,
+      value: `${value}${reset}`,
+      fg: colorConfig.fg,
+      bg: colorConfig.bg,
+    };
+  }
+
+  private formatCredits(credits: CreditBalance): string | null {
+    const overLimit = typeof credits.used === 'number'
+      && typeof credits.limit === 'number'
+      && credits.used > credits.limit;
+    if (typeof credits.remaining === 'number' && !overLimit) {
+      return credits.unit === 'requests'
+        ? `${Math.round(credits.remaining)} left`
+        : `$${credits.remaining.toFixed(StatusParser.DOLLAR_DECIMALS)} left`;
+    }
+    if (typeof credits.used === 'number' && typeof credits.limit === 'number') {
+      return credits.unit === 'requests'
+        ? `${Math.round(credits.used)}/${Math.round(credits.limit)}`
+        : `$${credits.used.toFixed(StatusParser.DOLLAR_DECIMALS)}/$${credits.limit.toFixed(StatusParser.DOLLAR_DECIMALS)}`;
+    }
+    if (typeof credits.used_percentage === 'number') {
+      return `${Math.round(credits.used_percentage)}% used`;
+    }
+    return null;
+  }
+
+  private creditUsedPercent(credits: CreditBalance): number | null {
+    if (typeof credits.used_percentage === 'number') {
+      return Math.round(credits.used_percentage);
+    }
+    if (typeof credits.used === 'number' && typeof credits.limit === 'number' && credits.limit > 0) {
+      return Math.round((credits.used / credits.limit) * StatusParser.CTX_PERCENT_MAX);
+    }
+    if (typeof credits.remaining === 'number' && typeof credits.limit === 'number' && credits.limit > 0) {
+      return Math.round(((credits.limit - credits.remaining) / credits.limit) * StatusParser.CTX_PERCENT_MAX);
+    }
+    return null;
+  }
+
   private extractRateLimits(status: StatusJSON, colors: SegmentColorMap): Segment[] {
     const limits = status.rate_limits;
     if (!limits) {
@@ -342,8 +409,8 @@ export class StatusParser {
     if (pct === null) {
       return null;
     }
-    const icon = (key === 'session' || key === 'five_hour') ? '⏱ ' : (key === 'week' || key === 'seven_day') ? '📅 ' : '⚡ ';
-    const label = key === 'five_hour' ? 'daily' : key === 'seven_day' ? 'weekly' : key;
+    const icon = (key === 'session' || key === 'five_hour' || key === 'day') ? '⏱ ' : (key === 'week' || key === 'seven_day') ? '📅 ' : '⚡ ';
+    const label = key === 'five_hour' || key === 'day' ? 'daily' : key === 'week' || key === 'seven_day' ? 'weekly' : key;
     const colorConfig = pct > 80 ? colors.rateCritical : pct > 50 ? colors.rateWarning : colors.rateHealthy;
     const reset = limit.resets_at ? ` ~${this.formatResetTime(limit.resets_at)}` : '';
     return { icon, label, value: `${pct}% used${reset}`, fg: colorConfig.fg, bg: colorConfig.bg };
