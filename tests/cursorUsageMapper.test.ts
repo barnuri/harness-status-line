@@ -64,6 +64,7 @@ describe('CursorUsageMapper', () => {
     }, capturedAt);
     expect(snapshot?.credits).toEqual({
       unit: 'requests',
+      pool: 'requests',
       used: 200,
       limit: 1000,
       remaining: 800,
@@ -95,6 +96,54 @@ describe('CursorUsageMapper', () => {
     const merged = mapper.merge(period, auth, capturedAt);
     expect(merged?.credits?.unit).toBe('requests');
     expect(merged?.credits?.remaining).toBe(90);
+  });
+
+  it('maps usage-summary on-demand cents to dollar on-demand credits', () => {
+    const snapshot = mapper.map({
+      billingCycleEnd: '2026-09-01T00:00:00.000Z',
+      individualUsage: {
+        plan: { enabled: true, totalPercentUsed: 51 },
+        onDemand: { enabled: true, used: 1730, limit: 20000, remaining: 18270 },
+      },
+    }, capturedAt);
+    expect(snapshot?.credits).toEqual({
+      unit: 'usd',
+      used: 17.3,
+      limit: 200,
+      remaining: 182.7,
+      used_percentage: 9,
+      pool: 'on_demand',
+    });
+  });
+
+  it('prefers usage-summary on-demand over /auth/usage when merging', () => {
+    const summary = mapper.map({
+      individualUsage: {
+        onDemand: { enabled: true, used: 100, limit: 20000, remaining: 19900 },
+      },
+    }, capturedAt);
+    const auth = mapper.map({ 'gpt-4': { numRequests: 1016, maxRequestUsage: 1000 } }, capturedAt);
+    const merged = mapper.merge(summary, auth, capturedAt);
+    expect(merged?.credits?.pool).toBe('on_demand');
+    expect(merged?.credits?.remaining).toBe(199);
+  });
+
+  it('maps usage-summary plan percent when on-demand is disabled', () => {
+    const snapshot = mapper.map({
+      billingCycleEnd: '2026-09-01T00:00:00.000Z',
+      individualUsage: {
+        plan: {
+          enabled: true,
+          totalPercentUsed: 51,
+          breakdown: { included: 0, bonus: 4063, total: 4063 },
+        },
+        onDemand: { enabled: false },
+      },
+    }, capturedAt);
+    expect(snapshot?.credits?.pool).toBe('included');
+    expect(snapshot?.credits?.used_percentage).toBe(51);
+    expect(snapshot?.credits?.limit).toBe(40.63);
+    expect(snapshot?.credits?.resets_at).toBe(Date.parse('2026-09-01T00:00:00.000Z') / 1000);
   });
 
   it('returns null for an empty object', () => {

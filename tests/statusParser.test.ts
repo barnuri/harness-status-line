@@ -1060,6 +1060,20 @@ describe('buildSegments() — Cursor payload', () => {
     expect(segs.find(s => s.label === 'autorun')).toBeUndefined();
   });
 
+  it('shows on-demand label and remaining dollars from usage-summary', () => {
+    const segs = parser.buildSegments({
+      autorun: false,
+      credits: {
+        remaining: 182.7,
+        limit: 200,
+        used: 17.3,
+        unit: 'usd',
+        pool: 'on_demand',
+      },
+    }, cfg);
+    expect(segs.find(s => s.label === 'on-demand')?.value).toBe('$182.70 left');
+  });
+
   it('shows remaining Cursor credits and daily/weekly windows', () => {
     const segs = parser.buildSegments({
       autorun: false,

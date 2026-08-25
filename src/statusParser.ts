@@ -17,6 +17,8 @@ export class StatusParser {
   private static readonly CTX_PERCENT_MIN = 0;
   private static readonly CTX_PERCENT_MAX = 100;
   private static readonly CREDITS_LABEL = 'credits';
+  private static readonly ON_DEMAND_LABEL = 'on-demand';
+  private static readonly INCLUDED_LABEL = 'included';
   private static readonly CREDITS_ICON = '💳 ';
   private static readonly DOLLAR_DECIMALS = 2;
 
@@ -338,11 +340,21 @@ export class StatusParser {
     const reset = credits.resets_at ? ` ~${this.formatResetTime(credits.resets_at)}` : '';
     return {
       icon: StatusParser.CREDITS_ICON,
-      label: StatusParser.CREDITS_LABEL,
+      label: this.creditsLabel(credits),
       value: `${value}${reset}`,
       fg: colorConfig.fg,
       bg: colorConfig.bg,
     };
+  }
+
+  private creditsLabel(credits: CreditBalance): string {
+    if (credits.pool === 'on_demand') {
+      return StatusParser.ON_DEMAND_LABEL;
+    }
+    if (credits.pool === 'included') {
+      return StatusParser.INCLUDED_LABEL;
+    }
+    return StatusParser.CREDITS_LABEL;
   }
 
   private formatCredits(credits: CreditBalance): string | null {

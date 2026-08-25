@@ -9,7 +9,7 @@ export class CursorUsageMapper {
       return null;
     }
     const body = raw as Record<string, unknown>;
-    const credits = this.mapCredits(body);
+    const credits = this.mapCredits(body) ?? this.fromUsageSummary(body);
     const rateLimits = this.mapRateLimits(body);
     if (!credits && !rateLimits) {
       return null;
@@ -32,6 +32,81 @@ export class CursorUsageMapper {
       ...(primary?.rate_limits ? { rate_limits: { ...fallback?.rate_limits, ...primary.rate_limits } } : {}),
       captured_at: capturedAt,
     };
+  }
+
+  private fromUsageSummary(body: Record<string, unknown>): CreditBalance | null {
+    const individual = this.asRecord(body['individualUsage']);
+    if (!individual) {
+      return null;
+    }
+    const onDemand = this.fromUsageSummaryOnDemand(this.asRecord(individual['onDemand']));
+    if (onDemand) {
+      return onDemand;
+    }
+    return this.fromUsageSummaryPlan(this.asRecord(individual['plan']), body['billingCycleEnd']);
+  }
+
+  private fromUsageSummaryOnDemand(pool: Record<string, unknown> | null): CreditBalance | null {
+    if (!pool || pool['enabled'] !== true) {
+      return null;
+    }
+    const usedCents = this.asNumber(pool['used']);
+    const limitCents = this.asNumber(pool['limit']);
+    const remainingCents = this.asNumber(pool['remaining']);
+    const credits = this.creditsFromCents(usedCents, limitCents, remainingCents, null);
+    if (!credits) {
+      return null;
+    }
+    return { ...credits, pool: 'on_demand' };
+  }
+
+  private fromUsageSummaryPlan(
+    plan: Record<string, unknown> | null,
+    billingCycleEnd: unknown,
+  ): CreditBalance | null {
+    if (!plan || plan['enabled'] !== true) {
+      return null;
+    }
+    const percent = this.asNumber(plan['totalPercentUsed'])
+      ?? this.asNumber(plan['apiPercentUsed'])
+      ?? this.asNumber(plan['autoPercentUsed']);
+    const breakdown = this.asRecord(plan['breakdown']);
+    const bonusCents = breakdown ? this.asNumber(breakdown['bonus']) : null;
+    const totalCents = breakdown ? this.asNumber(breakdown['total']) : null;
+    const usedCents = this.asNumber(plan['used']);
+    const limitCents = this.asNumber(plan['limit']);
+    const remainingCents = this.asNumber(plan['remaining']);
+    if (usedCents !== null || limitCents !== null || remainingCents !== null) {
+      const credits = this.creditsFromCents(usedCents, limitCents, remainingCents, percent);
+      if (credits) {
+        return { ...credits, pool: 'included' };
+      }
+    }
+    if (percent !== null) {
+      const resetsAt = this.billingCycleEndUnix(billingCycleEnd);
+      return {
+        unit: 'usd',
+        used_percentage: Math.round(percent),
+        pool: 'included',
+        ...(bonusCents !== null ? { limit: this.centsToDollars(bonusCents) } : {}),
+        ...(totalCents !== null && percent !== null
+          ? { used: this.centsToDollars(Math.round((totalCents * percent) / CursorUsageMapper.PERCENT_MAX)) }
+          : {}),
+        ...(resetsAt !== null ? { resets_at: resetsAt } : {}),
+      };
+    }
+    return null;
+  }
+
+  private billingCycleEndUnix(value: unknown): number | null {
+    if (typeof value !== 'string' || value.length === 0) {
+      return null;
+    }
+    const parsed = Date.parse(value);
+    if (Number.isNaN(parsed)) {
+      return null;
+    }
+    return Math.floor(parsed / 1000);
   }
 
   private mapCredits(body: Record<string, unknown>): CreditBalance | null {
@@ -65,6 +140,7 @@ export class CursorUsageMapper {
     const resetsAt = this.monthResetUnix(body);
     return {
       unit: 'requests',
+      pool: 'requests',
       ...(used !== null ? { used } : {}),
       ...(limit !== null ? { limit } : {}),
       ...(remaining !== null ? { remaining } : {}),

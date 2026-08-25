@@ -73,12 +73,15 @@ export interface Effort {
 
 export type CreditUnit = 'usd' | 'requests';
 
+export type CreditPool = 'on_demand' | 'included' | 'requests';
+
 export interface CreditBalance {
   readonly remaining?: number;
   readonly used?: number;
   readonly limit?: number;
   readonly used_percentage?: number;
   readonly unit?: CreditUnit;
+  readonly pool?: CreditPool;
   readonly resets_at?: number;
 }
 

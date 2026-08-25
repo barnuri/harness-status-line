@@ -107,8 +107,9 @@ Add this to `~/.cursor/cli-config.json`:
 | vim | `vim.mode` | `NORMAL` / `INSERT`. Omitted when vim mode is off. |
 | ctx | `context_window.used_percentage` | Falls back to `remaining_percentage` when used is null. Turns yellow >60%, red >80%. |
 | autorun | `autorun` | Shown as `autorun: on` only when `true`. |
-| credits | Cached Cursor usage (not on stdin) | Pro/Team dollar plans: remaining included spend, e.g. `$12.30 left`. Enterprise/request plans: remaining or used/limit from `/auth/usage`, e.g. `200 left` or `1016/1000`. Fetched in the background with the signed-in session (macOS keychain `cursor-access-token`, or the IDE `state.vscdb`) and cached at `~/.config/harness-status-line/cursor-usage.json`. |
-| daily / weekly | Cursor usage windows when present | Same chips as Claude `rate_limits`. Omitted when the account only has a billing-cycle or monthly request pool. |
+| on-demand | `cursor.com/api/usage-summary` (cached) | Individual On-Demand Usage budget from the dashboard, e.g. `$182.70 left`. Uses `WorkosCursorSessionToken` (`authId::accessToken` from `~/.cursor/cli-config.json` `authInfo` + keychain token). Overrides the request-pool chip when present. |
+| credits / included | Cached usage APIs | Dollar plan spend (`planUsage`), request pool (`/auth/usage`), or included API usage % when on-demand is disabled. |
+| daily / weekly | Cursor usage windows when present | Same chips as Claude `rate_limits`. |
 | wrap width | `render_width_chars` | Preferred over `COLUMNS` / `stdout.columns` so Cursor's own padding is not double-counted. |
 
 The Claude “Sub” auth chip is omitted on a stock Cursor payload. Hide quota chips with `config set segments.rateLimits false`.
