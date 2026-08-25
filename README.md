@@ -1,6 +1,16 @@
 # harness-status-line
 
-A Claude Code status line built with Bun/TypeScript. Shows real-time session info directly in your terminal status area.
+A Bun/TypeScript status line for coding-agent harnesses — not Claude Code only. The same parser and segments render in each host: folder, model, context %, git, session slug, and whatever that harness actually sends.
+
+| Harness | How it plugs in |
+|---|---|
+| **Claude Code** | stdin `statusLine` command (`~/.claude/settings.json`) |
+| **Cursor CLI** | stdin `statusLine` command (`~/.cursor/cli-config.json`) |
+| **Codex** | same stdin JSON contract; slug via `CODEX_THREAD_ID` (`~/.codex/config.toml` has no command hook) |
+| **Pi** | stdin `statusLine` command via [`pi-statusline`](https://pi.dev/packages/pi-statusline) (`~/.pi/agent/settings.json`) |
+| **opencode** | TUI plugin (`~/.config/opencode/tui.json`) |
+
+`--setup` installs the stdin command for Claude Code and Cursor. Codex, Pi, and opencode are manual (see below). Session slugs also resolve Grok, Gemini, and DeepSeek session ids when those env vars are set.
 
 ## Demo
 
@@ -27,7 +37,7 @@ A Claude Code status line built with Bun/TypeScript. Shows real-time session inf
 | Segment | Color | Description |
 |---|---|---|
 | **📁 folder** | Blue bg | Current working directory basename |
-| **🤖 model** | Purple bg | Claude model name (e.g. `claude-sonnet-4-6`) |
+| **🤖 model** | Purple bg | Current model name (e.g. `claude-sonnet-4-6`, `Sonnet 4.6 (Thinking)`) |
 | **ctx: N% · used/total** | Green/Yellow/Red bg | Context window usage % plus the absolute size in tokens (`0.42M/1M`, both scaled to one unit) — turns yellow >60%, red >80% |
 | **session: N%** | Cyan/Yellow/Red bg | Remaining session quota % — turns yellow <50%, red <20% |
 | **week: N%** | Cyan/Yellow/Red bg | Remaining weekly quota % |
@@ -45,13 +55,13 @@ This writes the `statusLine` configuration into both:
 - `~/.claude/settings.json` (or `.claude/settings.json` if it exists in the current project)
 - `~/.cursor/cli-config.json` (created if missing; other Cursor keys are preserved)
 
-Restart Claude Code or Cursor to activate.
+Restart the harness to activate.
 
 Running `bunx barnuri/harness-status-line` interactively (without piped stdin) automatically launches the setup wizard.
 
-## Manual configuration
+## Claude Code
 
-Add this to your `~/.claude/settings.json`:
+Add this to `~/.claude/settings.json` (or project `.claude/settings.json`):
 
 ```json
 {
@@ -63,11 +73,11 @@ Add this to your `~/.claude/settings.json`:
 }
 ```
 
-Cursor CLI uses `~/.cursor/cli-config.json` instead (see **Cursor** below).
+Claude Code pipes `StatusJSON` on each refresh. Rate-limit and auth segments come from that payload (and `ANTHROPIC_*` env).
 
 ## Cursor
 
-Cursor CLI is the same stdin command as Claude Code: it spawns `statusLine.command` on each refresh, pipes JSON, and displays ANSI stdout (multi-line wrapping is supported). `--setup` writes this file automatically.
+Cursor CLI is the same stdin contract: it spawns `statusLine.command` on each refresh, pipes JSON, and displays ANSI stdout (multi-line wrapping is supported). `--setup` writes this file automatically.
 
 ### Manual configuration
 
@@ -109,6 +119,33 @@ bunx barnuri/harness-status-line config set segments.worktree false
 bunx barnuri/harness-status-line config set segments.autorun false
 ```
 
+## Codex
+
+The parser accepts the same Claude-shaped stdin JSON Codex would send, and the slug segment reads `CODEX_THREAD_ID` (then `~/.claude/session-slugs/<id>`).
+
+Native Codex TUI `/statusline` is a picker of **built-in item ids**, not an external command. `~/.codex/config.toml` `tui.status_line` is an ordered list such as `["model", "context-used", "git-branch"]` — you cannot point it at `bunx`. If you wrap Codex or otherwise pipe StatusJSON into this binary, it renders the same segments as Claude Code.
+
+## Pi
+
+Pi does not spawn a status-line command on its own. Install [`pi-statusline`](https://pi.dev/packages/pi-statusline), which pipes a Claude Code–compatible JSON payload to an external command:
+
+```bash
+pi install npm:pi-statusline
+```
+
+Then add this to `~/.pi/agent/settings.json` (or project `.pi/settings.json`):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bunx barnuri/harness-status-line"
+  }
+}
+```
+
+The payload includes `cwd`, `session_id`, `model`, `workspace`, and `context_window`. Stubbed/null fields (`rate_limits`, `vim`, `worktree`, …) are omitted the same way as on a stock Cursor payload. Restart pi after installing the package.
+
 ## Regenerate preview screenshots
 
 ```bash
@@ -130,16 +167,16 @@ bunx playwright install chromium
 
 ## How it works
 
-Claude Code (and Cursor CLI) pipe a `StatusJSON` blob to the command's stdin on every refresh. The tool parses it, extracts the relevant fields, and writes a colored, bold status line to stdout.
+Stdin harnesses (Claude Code, Cursor CLI, Pi via `pi-statusline`) pipe a `StatusJSON` blob on every refresh. The tool parses it, extracts the relevant fields, and writes a colored, bold status line to stdout. opencode reuses the same `buildSegments` pipeline inside a TUI slot instead of stdin. Codex uses the same parser when JSON is piped in; its native TUI status line is separate.
 
 ```
-Claude Code / Cursor CLI
-    ↓  StatusJSON (stdin)
+harness (Claude Code / Cursor / Pi / Codex / opencode)
+    ↓  StatusJSON (stdin) or TUI state (opencode plugin)
 harness-status-line
     ↓  parse + extract metrics (StatusParser)
-    ↓  render ANSI-colored segments with bold backgrounds (StatusRenderer)
+    ↓  render ANSI segments (stdin) or TUI boxes (opencode)
     ↓  wrap to terminal width (or Cursor render_width_chars) — never truncate
-stdout → status bar
+status bar
 ```
 
 ## opencode
@@ -168,7 +205,7 @@ Then restart opencode — config is read once at startup.
 | Segment | Source |
 |---|---|
 | folder | `api.state.path.directory` (falls back to `worktree`) |
-| slug | `~/.claude/session-slugs/<session id>` — the same file the Claude status line reads |
+| slug | `~/.claude/session-slugs/<session id>` — the same file every stdin harness reads |
 | git branch | derived from the folder by the shared parser |
 | model | `api.state.provider[…].models[modelID].name` for the newest assistant message |
 | context % / size | that message's `tokens` (`total`, else input + output + reasoning + cache) against the model's `limit.context` |
@@ -179,7 +216,7 @@ the Claude status-line wrapper already writes. **If that snapshot is missing or 
 minutes, the rate-limit and auth segments are omitted** rather than shown stale — everything else
 still renders.
 
-### Known differences from the Claude status line
+### Known differences from the stdin status line
 
 - **No powerline separators.** An opencode slot is a component tree, not a character stream, so
   segments render as padded coloured boxes instead of `` glyph joins. Wrapping is handled by
@@ -220,7 +257,7 @@ bun run src/index.ts --setup 2>&1 | grep "Status line configured"
 ## Requirements
 
 - [Bun](https://bun.sh) ≥ 1.0
-- Claude Code CLI and/or Cursor CLI
+- A supported harness: Claude Code, Cursor CLI, Codex, Pi, and/or opencode
 
 ## License
 
