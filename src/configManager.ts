@@ -4,7 +4,7 @@ import * as os from 'os';
 import type { Config, RgbColor } from './types.ts';
 
 export class ConfigManager {
-  static readonly CONFIG_DIR = path.join(os.homedir(), '.config', 'claude-status-line');
+  static readonly CONFIG_DIR = path.join(os.homedir(), '.config', 'harness-status-line');
   static readonly CONFIG_FILE = path.join(ConfigManager.CONFIG_DIR, 'config.json');
 
   static readonly DEFAULT_CONFIG: Config = {

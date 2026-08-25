@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-const STATE_DIR = path.join(os.homedir(), '.cache', 'claude-status-line');
+const STATE_DIR = path.join(os.homedir(), '.cache', 'harness-status-line');
 const STATE_FILE = path.join(STATE_DIR, 'last-update.json');
 
 function writeState(state: { lastCheckedAt: number; lastSeenSha: string }): void {

@@ -1,4 +1,4 @@
-# claude-status-line
+# harness-status-line
 
 A Claude Code status line built with Bun/TypeScript. Shows real-time session info directly in your terminal status area.
 
@@ -37,12 +37,12 @@ If the content doesn't fit the terminal width it wraps to additional lines — *
 ## Setup (one command)
 
 ```bash
-bunx barnuri/claude-status-line --setup
+bunx barnuri/harness-status-line --setup
 ```
 
 This writes the `statusLine` configuration into your `~/.claude/settings.json` (or `.claude/settings.json` if it exists in the current project). Restart Claude Code to activate.
 
-Running `bunx barnuri/claude-status-line` interactively (without piped stdin) automatically launches the setup wizard.
+Running `bunx barnuri/harness-status-line` interactively (without piped stdin) automatically launches the setup wizard.
 
 ## Manual configuration
 
@@ -52,7 +52,7 @@ Add this to your `~/.claude/settings.json`:
 {
   "statusLine": {
     "type": "command",
-    "command": "bunx barnuri/claude-status-line",
+    "command": "bunx barnuri/harness-status-line",
     "refreshInterval": 2000
   }
 }
@@ -84,7 +84,7 @@ Claude Code pipes a `StatusJSON` blob to the command's stdin on every refresh. T
 ```
 Claude Code runtime
     ↓  StatusJSON (stdin)
-claude-status-line
+harness-status-line
     ↓  parse + extract metrics (StatusParser)
     ↓  render ANSI-colored segments with bold backgrounds (StatusRenderer)
     ↓  wrap to terminal width — never truncate
@@ -102,7 +102,7 @@ Add the plugin's **absolute path** to `~/.config/opencode/tui.json`:
 
 ```json
 {
-  "plugin": ["/absolute/path/to/claude-status-line/src/opencode/plugin.ts"]
+  "plugin": ["/absolute/path/to/harness-status-line/src/opencode/plugin.ts"]
 }
 ```
 

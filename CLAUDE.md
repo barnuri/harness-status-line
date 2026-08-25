@@ -1,4 +1,4 @@
-# CLAUDE.md — claude-status-line
+# CLAUDE.md — harness-status-line
 
 ## Project Overview
 
@@ -85,7 +85,7 @@ Claude Code reads `statusLine` from `~/.claude/settings.json` or `.claude/settin
 {
   "statusLine": {
     "type": "command",
-    "command": "bunx barnuri/claude-status-line",
+    "command": "bunx barnuri/harness-status-line",
     "refreshInterval": 2000
   }
 }

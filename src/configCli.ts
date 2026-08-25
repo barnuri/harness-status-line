@@ -24,7 +24,7 @@ export class ConfigCli {
     const config = manager.load();
     process.stdout.write(`\nCurrent configuration (${ConfigManager.CONFIG_FILE}):\n\n`);
     process.stdout.write(JSON.stringify(config, null, 2) + '\n');
-    process.stdout.write("\nRun 'bunx barnuri/claude-status-line config reset' to restore defaults.\n\n");
+    process.stdout.write("\nRun 'bunx barnuri/harness-status-line config reset' to restore defaults.\n\n");
   }
 
   private set(args: string[]): void {
@@ -46,7 +46,7 @@ export class ConfigCli {
 
   private printHelp(): void {
     process.stdout.write(`
-Usage: bunx barnuri/claude-status-line config <command>
+Usage: bunx barnuri/harness-status-line config <command>
 
 Commands:
   show                        Show current configuration

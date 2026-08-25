@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Generates an HTML preview page for the claude-status-line.
+ * Generates an HTML preview page for the harness-status-line.
  * Usage: bun run scripts/preview.ts [--out path/to/out.html]
  * Writes a self-contained HTML file with all demo scenarios.
  */
@@ -145,7 +145,7 @@ class PreviewGenerator {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>claude-status-line preview</title>
+  <title>harness-status-line preview</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -186,7 +186,7 @@ class PreviewGenerator {
   </style>
 </head>
 <body>
-  <h1>claude-status-line</h1>
+  <h1>harness-status-line</h1>
   ${scenarios.join('\n  ')}
 </body>
 </html>`;

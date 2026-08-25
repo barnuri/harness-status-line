@@ -67,6 +67,6 @@ class Application {
 
 new Application().run().catch(err => {
   const message = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`claude-status-line error: ${message}\n`);
+  process.stderr.write(`harness-status-line error: ${message}\n`);
   process.exit(1);
 });

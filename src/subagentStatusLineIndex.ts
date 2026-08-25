@@ -29,6 +29,6 @@ class SubagentStatusLineApplication {
 
 new SubagentStatusLineApplication().run().catch(err => {
   const message = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`claude-subagent-status-line error: ${message}\n`);
+  process.stderr.write(`harness-subagent-status-line error: ${message}\n`);
   process.exit(1);
 });

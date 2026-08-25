@@ -8,7 +8,7 @@ Regenerate all preview images and the animated GIF for the README.
 2. Run `bun run scripts/animated-preview.ts` → `docs/animated.html`
 3. Start a local HTTP server on port 7823 serving the `docs/` directory:
    ```bash
-   bun --eval "Bun.serve({port:7823, fetch(r){return new Response(Bun.file('/Users/barnu/sandbox/private/claude-status-line/docs'+new URL(r.url).pathname),{headers:{'Content-Type':'text/html'}})}})" &
+   bun --eval "Bun.serve({port:7823, fetch(r){return new Response(Bun.file('/Users/barnu/sandbox/private/harness-status-line/docs'+new URL(r.url).pathname),{headers:{'Content-Type':'text/html'}})}})" &
    ```
 4. Use Playwright MCP to navigate to `http://localhost:7823/preview.html`.
 5. Take a full-page screenshot → `docs/screenshot-all-scenarios.png`.

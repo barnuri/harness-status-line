@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "claude-status-line",
+      "name": "harness-status-line",
       "devDependencies": {
         "@opentui/core": "0.5.1",
         "@opentui/solid": "0.5.1",

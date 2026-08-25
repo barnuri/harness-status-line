@@ -2,8 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-const GITHUB_API_URL = 'https://api.github.com/repos/barnuri/claude-status-line/commits/master';
-const STATE_DIR = path.join(os.homedir(), '.cache', 'claude-status-line');
+const GITHUB_API_URL = 'https://api.github.com/repos/barnuri/harness-status-line/commits/master';
+const STATE_DIR = path.join(os.homedir(), '.cache', 'harness-status-line');
 const STATE_FILE = path.join(STATE_DIR, 'last-update.json');
 const CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -44,7 +44,7 @@ export class UpdateChecker {
   private async fetchLatestSha(): Promise<string> {
     const response = await fetch(GITHUB_API_URL, {
       signal: AbortSignal.timeout(5000),
-      headers: { 'User-Agent': 'claude-status-line-updater' },
+      headers: { 'User-Agent': 'harness-status-line-updater' },
     });
     if (!response.ok) {
       throw new Error(`GitHub API returned ${response.status}`);
@@ -57,7 +57,7 @@ export class UpdateChecker {
   }
 
   private spawnReload(): void {
-    Bun.spawn(['bunx', '--reload', 'barnuri/claude-status-line', '--noop'], {
+    Bun.spawn(['bunx', '--reload', 'barnuri/harness-status-line', '--noop'], {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
     });

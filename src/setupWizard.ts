@@ -11,7 +11,7 @@ export class SetupWizard {
     const settingsPath = this.resolveSettingsPath();
     const settings = this.loadSettings(settingsPath);
 
-    const command = 'bunx barnuri/claude-status-line';
+    const command = 'bunx barnuri/harness-status-line';
 
     settings.statusLine = {
       type: 'command',

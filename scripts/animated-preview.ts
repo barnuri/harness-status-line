@@ -110,7 +110,7 @@ ${lines}
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>claude-status-line</title>
+<title>harness-status-line</title>
 <style>
 * { box-sizing:border-box; margin:0; padding:0 }
 body {
@@ -138,7 +138,7 @@ ${keyframes}
 </style>
 </head>
 <body>
-<h1>claude-status-line</h1>
+<h1>harness-status-line</h1>
 <div class="stage">
 ${frameDivs}
 </div>

@@ -81,4 +81,4 @@ const tui = async (api: SlotRegisteringApi): Promise<void> => {
   }
 };
 
-export default { id: 'claude-status-line', tui };
+export default { id: 'harness-status-line', tui };

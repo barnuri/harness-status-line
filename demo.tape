@@ -9,7 +9,7 @@ Set LoopOffset 0%
 Set Shell "bash"
 
 Hide
-Type `export PS1='' && export PATH=/Users/barnu/.bun/bin:$PATH && cd /Users/barnu/sandbox/private/claude-status-line`
+Type `export PS1='' && export PATH=/Users/barnu/.bun/bin:$PATH && cd /Users/barnu/sandbox/private/harness-status-line`
 Enter
 Sleep 1s
 
