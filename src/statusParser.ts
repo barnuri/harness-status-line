@@ -2,6 +2,7 @@ import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap,
 import { formatTokenCount, formatTokenPair } from './shared/tokenFormat.ts';
 import { resolveSessionSlug } from './shared/sessionSlug.ts';
 import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
+import { CursorAutoModelReader } from './shared/cursorAutoModelReader.ts';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -12,6 +13,7 @@ export class StatusParser {
   private static readonly WORKFLOW_STALE_AFTER_SECONDS = 120;
   private static readonly CTX_VALUE_SEPARATOR = '·';
   private static readonly MAX_MODE_SUFFIX = ' · max';
+  private static readonly AUTO_MODEL_NAMES: ReadonlyArray<string> = ['auto', 'default'];
   private static readonly AUTORUN_LABEL = 'autorun';
   private static readonly AUTORUN_VALUE = 'on';
   private static readonly CTX_PERCENT_MIN = 0;
@@ -21,6 +23,12 @@ export class StatusParser {
   private static readonly INCLUDED_LABEL = 'included';
   private static readonly CREDITS_ICON = '💳 ';
   private static readonly DOLLAR_DECIMALS = 2;
+
+  private readonly autoModelReader: CursorAutoModelReader;
+
+  constructor(autoModelReader?: CursorAutoModelReader) {
+    this.autoModelReader = autoModelReader ?? new CursorAutoModelReader();
+  }
 
   parse(raw: string): StatusJSON {
     if (!raw.trim()) {
@@ -245,10 +253,10 @@ export class StatusParser {
   private extractModel(status: StatusJSON): string | null {
     const raw = status.model;
     if (!raw) { return null; }
-    if (typeof raw === 'string') { return raw; }
+    if (typeof raw === 'string') { return this.withResolvedAutoModel(raw, status); }
     const name = raw.display_name ?? raw.name ?? raw.id;
     if (typeof name !== 'string' || name.length === 0) { return null; }
-    let value = name;
+    let value = this.withResolvedAutoModel(name, status);
     const summary = raw.param_summary;
     if (typeof summary === 'string' && summary.length > 0) {
       value = `${value} ${summary}`;
@@ -257,6 +265,13 @@ export class StatusParser {
       value = `${value}${StatusParser.MAX_MODE_SUFFIX}`;
     }
     return value;
+  }
+
+  private withResolvedAutoModel(name: string, status: StatusJSON): string {
+    if (!StatusParser.AUTO_MODEL_NAMES.includes(name.trim().toLowerCase())) { return name; }
+    const label = this.autoModelReader.readResolvedLabel(this.resolveSessionId(status));
+    if (label === null) { return name; }
+    return `${name} (${label})`;
   }
 
   private extractWorktree(status: StatusJSON): string | null {

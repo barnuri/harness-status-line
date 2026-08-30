@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import { StatusParser } from '../src/statusParser.ts';
+import { CursorAutoModelReader } from '../src/shared/cursorAutoModelReader.ts';
 import { ConfigManager } from '../src/configManager.ts';
 import { writeWorkflowActiveState } from '../src/shared/workflowActiveState.ts';
 import type { Config, StatusJSON } from '../src/types.ts';
@@ -317,6 +318,55 @@ describe('buildSegments() — model segment', () => {
   it('omits model segment when model object has no recognized key', () => {
     const segs = parser.buildSegments({ model: {} }, cfg);
     expect(segs.find(s => s.icon === '🤖 ')).toBeUndefined();
+  });
+});
+
+// ────────────────────────────────────────────────────────
+// buildSegments() — Cursor Auto model resolution
+// ────────────────────────────────────────────────────────
+
+describe('buildSegments() — Cursor Auto model', () => {
+  class StubAutoModelReader extends CursorAutoModelReader {
+    constructor(private readonly label: string | null) {
+      super('/nonexistent');
+    }
+
+    override readResolvedLabel(): string | null {
+      return this.label;
+    }
+  }
+
+  const parserWithLabel = (label: string | null): StatusParser =>
+    new StatusParser(new StubAutoModelReader(label));
+
+  it('appends the resolved model to an Auto display name', () => {
+    const segs = parserWithLabel('Grok').buildSegments({ model: { display_name: 'Auto' } }, cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto (Grok)');
+  });
+
+  it('appends the resolved model when model is a bare string', () => {
+    const segs = parserWithLabel('Composer').buildSegments({ model: 'auto' }, cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('auto (Composer)');
+  });
+
+  it('treats a default model id as Auto', () => {
+    const segs = parserWithLabel('Grok').buildSegments({ model: { id: 'default' } }, cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('default (Grok)');
+  });
+
+  it('leaves Auto bare when no model has been resolved yet', () => {
+    const segs = parserWithLabel(null).buildSegments({ model: { display_name: 'Auto' } }, cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto');
+  });
+
+  it('leaves an explicitly selected model untouched', () => {
+    const segs = parserWithLabel('Grok').buildSegments({ model: { display_name: 'Sonnet 4.6' } }, cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Sonnet 4.6');
+  });
+
+  it('keeps the max-mode suffix after the resolved model', () => {
+    const segs = parserWithLabel('Grok').buildSegments({ model: { display_name: 'Auto', max_mode: true } }, cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto (Grok) · max');
   });
 });
 
