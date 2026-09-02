@@ -23,6 +23,8 @@ export class StatusParser {
   private static readonly INCLUDED_LABEL = 'included';
   private static readonly CREDITS_ICON = '💳 ';
   private static readonly DOLLAR_DECIMALS = 2;
+  private static readonly SESSION_COST_LABEL = 'cost';
+  private static readonly SESSION_COST_ICON = '💵 ';
 
   private readonly autoModelReader: CursorAutoModelReader;
 
@@ -131,7 +133,15 @@ export class StatusParser {
       if (credits) {
         segments.push(credits);
       }
-      segments.push(...this.extractRateLimits(status, colors));
+      const rateLimits = this.extractRateLimits(status, colors);
+      segments.push(...rateLimits);
+
+      if (!credits && rateLimits.length === 0) {
+        const sessionCost = this.buildSessionCostSegment(status, colors);
+        if (sessionCost) {
+          segments.push(sessionCost);
+        }
+      }
     }
 
     return segments;
@@ -390,6 +400,20 @@ export class StatusParser {
       return `${Math.round(credits.used_percentage)}% used`;
     }
     return null;
+  }
+
+  private buildSessionCostSegment(status: StatusJSON, colors: SegmentColorMap): Segment | null {
+    const totalUsd = status.cost?.total_cost_usd;
+    if (typeof totalUsd !== 'number' || !Number.isFinite(totalUsd)) {
+      return null;
+    }
+    return {
+      icon: StatusParser.SESSION_COST_ICON,
+      label: StatusParser.SESSION_COST_LABEL,
+      value: `$${totalUsd.toFixed(StatusParser.DOLLAR_DECIMALS)} session`,
+      fg: colors.rateHealthy.fg,
+      bg: colors.rateHealthy.bg,
+    };
   }
 
   private creditUsedPercent(credits: CreditBalance): number | null {

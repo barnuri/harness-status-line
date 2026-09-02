@@ -14,6 +14,7 @@ export interface OpencodeMessage {
   readonly modelID?: string;
   readonly providerID?: string;
   readonly tokens?: OpencodeMessageTokens;
+  readonly cost?: number;
 }
 
 export interface OpencodeModel {

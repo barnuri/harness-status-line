@@ -75,6 +75,14 @@ export type CreditUnit = 'usd' | 'requests';
 
 export type CreditPool = 'on_demand' | 'included' | 'requests';
 
+export interface Cost {
+  readonly total_cost_usd?: number;
+  readonly total_duration_ms?: number;
+  readonly total_api_duration_ms?: number;
+  readonly total_lines_added?: number;
+  readonly total_lines_removed?: number;
+}
+
 export interface CreditBalance {
   readonly remaining?: number;
   readonly used?: number;
@@ -104,6 +112,7 @@ export interface StatusJSON {
   readonly vim?: VimState;
   readonly worktree?: Worktree;
   readonly credits?: CreditBalance;
+  readonly cost?: Cost;
 }
 
 export interface SubagentTask {
@@ -120,6 +129,7 @@ export interface SubagentTask {
   readonly tokenCount?: number;
   readonly tokenSamples?: unknown;
   readonly cwd?: string;
+  readonly costUsd?: number;
 }
 
 export interface SubagentStatusLineInput {
@@ -140,6 +150,7 @@ export interface OpencodeStatusInput {
   readonly contextTokens?: number;
   readonly contextWindowSize?: number;
   readonly version?: string;
+  readonly sessionCostUsd?: number;
 }
 
 export interface UsageSnapshot {

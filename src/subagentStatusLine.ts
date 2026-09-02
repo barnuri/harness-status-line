@@ -6,6 +6,8 @@ export class SubagentStatusLineRenderer {
   private static readonly SLUG_ICON = '🏷 ';
   private static readonly SEPARATOR = ' · ';
   private static readonly TRUNCATION_SUFFIX = '…';
+  private static readonly COST_ICON = '💵 ';
+  private static readonly DOLLAR_DECIMALS = 2;
 
   parse(raw: string): SubagentStatusLineInput {
     if (!raw.trim()) {
@@ -51,6 +53,9 @@ export class SubagentStatusLineRenderer {
     const tokens = this.formatTokens(task.tokenCount, task.contextWindowSize);
     if (tokens) { parts.push(tokens); }
 
+    const cost = this.formatCost(task.costUsd);
+    if (cost) { parts.push(cost); }
+
     if (slug) { parts.push(`${SubagentStatusLineRenderer.SLUG_ICON}${slug}`); }
 
     const content = parts.join(SubagentStatusLineRenderer.SEPARATOR);
@@ -70,6 +75,11 @@ export class SubagentStatusLineRenderer {
       return `${formatTokenCount(tokenCount)} (${percent}%)`;
     }
     return formatTokenCount(tokenCount);
+  }
+
+  private formatCost(costUsd: number | undefined): string | null {
+    if (typeof costUsd !== 'number' || !Number.isFinite(costUsd)) { return null; }
+    return `${SubagentStatusLineRenderer.COST_ICON}$${costUsd.toFixed(SubagentStatusLineRenderer.DOLLAR_DECIMALS)}`;
   }
 
   private truncate(content: string, columns: number | undefined): string {

@@ -12,6 +12,7 @@ export class OpencodeStatusSource {
       ...(contextWindow ? { context_window: contextWindow } : {}),
       ...(snapshot?.rate_limits ? { rate_limits: snapshot.rate_limits } : {}),
       ...(snapshot?.api ? { api: snapshot.api } : {}),
+      ...(typeof input.sessionCostUsd === 'number' ? { cost: { total_cost_usd: input.sessionCostUsd } } : {}),
     };
   }
 
