@@ -98,11 +98,22 @@ describe('CursorUsageMapper', () => {
     expect(merged?.credits?.remaining).toBe(90);
   });
 
-  it('maps usage-summary on-demand cents to dollar on-demand credits', () => {
+  it('prefers usage-summary plan while budget remains, even when on-demand is enabled', () => {
     const snapshot = mapper.map({
       billingCycleEnd: '2026-09-01T00:00:00.000Z',
       individualUsage: {
         plan: { enabled: true, totalPercentUsed: 51 },
+        onDemand: { enabled: true, used: 1730, limit: 20000, remaining: 18270 },
+      },
+    }, capturedAt);
+    expect(snapshot?.credits?.pool).toBe('included');
+    expect(snapshot?.credits?.used_percentage).toBe(51);
+  });
+
+  it('falls back to usage-summary on-demand once the plan budget is exhausted', () => {
+    const snapshot = mapper.map({
+      individualUsage: {
+        plan: { enabled: true, totalPercentUsed: 100 },
         onDemand: { enabled: true, used: 1730, limit: 20000, remaining: 18270 },
       },
     }, capturedAt);

@@ -39,11 +39,22 @@ export class CursorUsageMapper {
     if (!individual) {
       return null;
     }
-    const onDemand = this.fromUsageSummaryOnDemand(this.asRecord(individual['onDemand']));
-    if (onDemand) {
-      return onDemand;
+    const plan = this.fromUsageSummaryPlan(this.asRecord(individual['plan']), body['billingCycleEnd']);
+    if (plan && !this.isExhausted(plan)) {
+      return plan;
     }
-    return this.fromUsageSummaryPlan(this.asRecord(individual['plan']), body['billingCycleEnd']);
+    const onDemand = this.fromUsageSummaryOnDemand(this.asRecord(individual['onDemand']));
+    return onDemand ?? plan;
+  }
+
+  private isExhausted(credits: CreditBalance): boolean {
+    if (typeof credits.used_percentage === 'number') {
+      return credits.used_percentage >= CursorUsageMapper.PERCENT_MAX;
+    }
+    if (typeof credits.remaining === 'number') {
+      return credits.remaining <= 0;
+    }
+    return false;
   }
 
   private fromUsageSummaryOnDemand(pool: Record<string, unknown> | null): CreditBalance | null {
