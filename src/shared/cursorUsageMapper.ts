@@ -87,7 +87,7 @@ export class CursorUsageMapper {
     const usedCents = this.asNumber(plan['used']);
     const limitCents = this.asNumber(plan['limit']);
     const remainingCents = this.asNumber(plan['remaining']);
-    if (usedCents !== null || limitCents !== null || remainingCents !== null) {
+    if (limitCents !== null && limitCents > 0) {
       const credits = this.creditsFromCents(usedCents, limitCents, remainingCents, percent);
       if (credits) {
         return { ...credits, pool: 'included' };
@@ -95,13 +95,17 @@ export class CursorUsageMapper {
     }
     if (percent !== null) {
       const resetsAt = this.billingCycleEndUnix(billingCycleEnd);
+      const usedFromBreakdown = totalCents !== null
+        ? Math.round((totalCents * percent) / CursorUsageMapper.PERCENT_MAX)
+        : null;
       return {
         unit: 'usd',
         used_percentage: Math.round(percent),
         pool: 'included',
         ...(bonusCents !== null ? { limit: this.centsToDollars(bonusCents) } : {}),
-        ...(totalCents !== null && percent !== null
-          ? { used: this.centsToDollars(Math.round((totalCents * percent) / CursorUsageMapper.PERCENT_MAX)) }
+        ...(usedFromBreakdown !== null ? { used: this.centsToDollars(usedFromBreakdown) } : {}),
+        ...(bonusCents !== null && usedFromBreakdown !== null
+          ? { remaining: this.centsToDollars(Math.max(0, bonusCents - usedFromBreakdown)) }
           : {}),
         ...(resetsAt !== null ? { resets_at: resetsAt } : {}),
       };
