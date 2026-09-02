@@ -95,19 +95,25 @@ export class CursorUsageClient {
           : Promise.resolve(null),
       ]);
       const capturedAt = new Date().toISOString();
-      const snapshot = this.mapper.merge(
-        this.mapper.map(summaryRaw, capturedAt),
-        this.mapper.merge(
-          this.mapper.map(periodRaw, capturedAt),
-          this.mapper.map(authRaw, capturedAt),
-          capturedAt,
-        ),
+      const includedSnapshot = this.mapper.merge(
+        this.mapper.map(periodRaw, capturedAt),
+        this.mapper.map(authRaw, capturedAt),
         capturedAt,
       );
-      if (!snapshot) {
+      const summarySnapshot = this.mapper.map(summaryRaw, capturedAt);
+      const onDemandCredits = this.mapper.extractOnDemand(summaryRaw);
+      const credits = this.mapper.preferIncludedUsage(includedSnapshot?.credits ?? null, onDemandCredits)
+        ?? summarySnapshot?.credits
+        ?? null;
+      const rateLimits = { ...summarySnapshot?.rate_limits, ...includedSnapshot?.rate_limits };
+      if (!credits && Object.keys(rateLimits).length === 0) {
         return;
       }
-      this.store.write(snapshot);
+      this.store.write({
+        ...(credits ? { credits } : {}),
+        ...(Object.keys(rateLimits).length > 0 ? { rate_limits: rateLimits } : {}),
+        captured_at: capturedAt,
+      });
     } finally {
       clearTimeout(timer);
     }

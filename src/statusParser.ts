@@ -376,25 +376,22 @@ export class StatusParser {
     if (credits.pool === 'on_demand') {
       return StatusParser.ON_DEMAND_LABEL;
     }
-    if (credits.pool === 'included') {
+    if (credits.pool === 'included' || credits.pool === 'requests') {
       return StatusParser.INCLUDED_LABEL;
     }
     return StatusParser.CREDITS_LABEL;
   }
 
   private formatCredits(credits: CreditBalance): string | null {
-    const overLimit = typeof credits.used === 'number'
-      && typeof credits.limit === 'number'
-      && credits.used > credits.limit;
-    if (typeof credits.remaining === 'number' && !overLimit) {
-      return credits.unit === 'requests'
-        ? `${Math.round(credits.remaining)} left`
-        : `$${credits.remaining.toFixed(StatusParser.DOLLAR_DECIMALS)} left`;
-    }
     if (typeof credits.used === 'number' && typeof credits.limit === 'number') {
       return credits.unit === 'requests'
         ? `${Math.round(credits.used)}/${Math.round(credits.limit)}`
         : `$${credits.used.toFixed(StatusParser.DOLLAR_DECIMALS)}/$${credits.limit.toFixed(StatusParser.DOLLAR_DECIMALS)}`;
+    }
+    if (typeof credits.remaining === 'number') {
+      return credits.unit === 'requests'
+        ? `${Math.round(credits.remaining)} left`
+        : `$${credits.remaining.toFixed(StatusParser.DOLLAR_DECIMALS)} left`;
     }
     if (typeof credits.used_percentage === 'number') {
       return `${Math.round(credits.used_percentage)}% used`;

@@ -34,6 +34,33 @@ export class CursorUsageMapper {
     };
   }
 
+  extractOnDemand(raw: unknown): CreditBalance | null {
+    const body = this.asRecord(raw);
+    if (!body) {
+      return null;
+    }
+    const individual = this.asRecord(body['individualUsage']);
+    if (!individual) {
+      return null;
+    }
+    return this.fromUsageSummaryOnDemand(this.asRecord(individual['onDemand']));
+  }
+
+  preferIncludedUsage(included: CreditBalance | null, onDemand: CreditBalance | null): CreditBalance | null {
+    if (included && !this.shouldPreferOnDemand(included, onDemand)) {
+      return included;
+    }
+    return onDemand ?? included ?? null;
+  }
+
+  private shouldPreferOnDemand(included: CreditBalance, onDemand: CreditBalance | null): boolean {
+    if (!onDemand) {
+      return false;
+    }
+    const onDemandInUse = typeof onDemand.used === 'number' && onDemand.used > 0;
+    return this.isExhausted(included) && onDemandInUse;
+  }
+
   private fromUsageSummary(body: Record<string, unknown>): CreditBalance | null {
     const individual = this.asRecord(body['individualUsage']);
     if (!individual) {

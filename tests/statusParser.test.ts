@@ -1110,7 +1110,7 @@ describe('buildSegments() — Cursor payload', () => {
     expect(segs.find(s => s.label === 'autorun')).toBeUndefined();
   });
 
-  it('shows on-demand label and remaining dollars from usage-summary', () => {
+  it('shows on-demand label as used/limit dollars from usage-summary', () => {
     const segs = parser.buildSegments({
       autorun: false,
       credits: {
@@ -1121,7 +1121,7 @@ describe('buildSegments() — Cursor payload', () => {
         pool: 'on_demand',
       },
     }, cfg);
-    expect(segs.find(s => s.label === 'on-demand')?.value).toBe('$182.70 left');
+    expect(segs.find(s => s.label === 'on-demand')?.value).toBe('$17.30/$200.00');
   });
 
   it('shows remaining Cursor credits and daily/weekly windows', () => {
@@ -1143,12 +1143,12 @@ describe('buildSegments() — Cursor payload', () => {
     expect(segs.find(s => s.label === 'credits')?.value).toBe('1016/1000');
   });
 
-  it('shows remaining Cursor request quota when under the pool', () => {
+  it('shows Cursor request quota as used/limit when under the pool', () => {
     const segs = parser.buildSegments({
       autorun: false,
       credits: { used: 200, limit: 1000, remaining: 800, unit: 'requests' },
     }, cfg);
-    expect(segs.find(s => s.label === 'credits')?.value).toBe('800 left');
+    expect(segs.find(s => s.label === 'credits')?.value).toBe('200/1000');
   });
 
   it('omits credits when rateLimits visibility is false', () => {
