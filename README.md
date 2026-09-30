@@ -6,11 +6,12 @@ A Bun/TypeScript status line for coding-agent harnesses — not Claude Code only
 |---|---|
 | **Claude Code** | stdin `statusLine` command (`~/.claude/settings.json`) |
 | **Cursor CLI** | stdin `statusLine` command (`~/.cursor/cli-config.json`) |
+| **Copilot CLI** | stdin `statusLine.command` (`~/.copilot/settings.json`) |
 | **Codex** | same stdin JSON contract; slug via `CODEX_THREAD_ID` (`~/.codex/config.toml` has no command hook) |
 | **Pi** | stdin `statusLine` command via [`pi-statusline`](https://pi.dev/packages/pi-statusline) (`~/.pi/agent/settings.json`) |
 | **opencode** | TUI plugin (`~/.config/opencode/tui.json`) |
 
-`--setup` installs the stdin command for Claude Code and Cursor. Codex, Pi, and opencode are manual (see below). Session slugs also resolve Grok, Gemini, and DeepSeek session ids when those env vars are set.
+`--setup` installs the stdin command for Claude Code, Cursor, and Copilot CLI. Codex, Pi, and opencode are manual (see below). Session slugs also resolve Grok, Gemini, and DeepSeek session ids when those env vars are set.
 
 ## Demo
 
@@ -50,10 +51,11 @@ If the content doesn't fit the terminal width it wraps to additional lines — *
 bunx barnuri/harness-status-line --setup
 ```
 
-This writes the `statusLine` configuration into both:
+This writes the `statusLine` configuration into:
 
 - `~/.claude/settings.json` (or `.claude/settings.json` if it exists in the current project)
 - `~/.cursor/cli-config.json` (created if missing; other Cursor keys are preserved)
+- `~/.copilot/settings.json` (created if missing; other Copilot CLI keys are preserved)
 
 Restart the harness to activate.
 
@@ -122,6 +124,38 @@ bunx barnuri/harness-status-line config set segments.worktree false
 bunx barnuri/harness-status-line config set segments.autorun false
 ```
 
+## Copilot CLI
+
+Copilot CLI's `/statusline` (alias `/footer`) feature spawns `statusLine.command` on each refresh, writes JSON to its stdin, and prints the trimmed stdout as the footer. `--setup` configures this automatically.
+
+### Manual configuration
+
+Add this to `~/.copilot/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "command": "bunx barnuri/harness-status-line",
+    "refreshInterval": 2
+  }
+}
+```
+
+Note `refreshInterval` is in **seconds** here (Copilot CLI's own convention), unlike Claude Code's/Cursor's millisecond fields.
+
+### Field mapping
+
+| Segment | Copilot CLI field | Notes |
+|---|---|---|
+| folder | `cwd` / `workspace.current_dir` | Basename only. |
+| model | `model.display_name` | Falls back to `model.id`. |
+| ctx | `context_window.current_context_used_percentage` | Falls back to `used_percentage` (cumulative) when absent. Absolute size uses `current_context_tokens`/`displayed_context_limit`. |
+| cost | `cost.total_premium_requests` | Shown as `N premium reqs` since Copilot CLI bills in premium requests, not USD. |
+| yolo | `allow_all_enabled` | Shows `yolo: on` when Copilot CLI's allow-all mode is enabled. |
+
+Copilot CLI doesn't send `api`/`rate_limits`, so the auth and quota chips are omitted rather than showing a misleading default.
+Hide the YOLO chip with `bunx barnuri/harness-status-line config set segments.yolo false`.
+
 ## Codex
 
 The parser accepts the same Claude-shaped stdin JSON Codex would send, and the slug segment reads `CODEX_THREAD_ID` (then `~/.claude/session-slugs/<id>`).
@@ -170,7 +204,7 @@ bunx playwright install chromium
 
 ## How it works
 
-Stdin harnesses (Claude Code, Cursor CLI, Pi via `pi-statusline`) pipe a `StatusJSON` blob on every refresh. The tool parses it, extracts the relevant fields, and writes a colored, bold status line to stdout. opencode reuses the same `buildSegments` pipeline inside a TUI slot instead of stdin. Codex uses the same parser when JSON is piped in; its native TUI status line is separate.
+Stdin harnesses (Claude Code, Cursor CLI, Copilot CLI, Pi via `pi-statusline`) pipe a `StatusJSON` blob on every refresh. The tool parses it, extracts the relevant fields, and writes a colored, bold status line to stdout. opencode reuses the same `buildSegments` pipeline inside a TUI slot instead of stdin. Codex uses the same parser when JSON is piped in; its native TUI status line is separate.
 
 ```
 harness (Claude Code / Cursor / Pi / Codex / opencode)
@@ -260,7 +294,7 @@ bun run src/index.ts --setup 2>&1 | grep "Status line configured"
 ## Requirements
 
 - [Bun](https://bun.sh) ≥ 1.0
-- A supported harness: Claude Code, Cursor CLI, Codex, Pi, and/or opencode
+- A supported harness: Claude Code, Cursor CLI, Copilot CLI, Codex, Pi, and/or opencode
 
 ## License
 

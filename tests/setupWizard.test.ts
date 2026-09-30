@@ -8,6 +8,7 @@ describe('SetupWizard', () => {
   let tempDir: string;
   let claudePath: string;
   let cursorPath: string;
+  let copilotPath: string;
   let logs: string[];
   let originalLog: typeof console.log;
 
@@ -15,6 +16,7 @@ describe('SetupWizard', () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-wizard-'));
     claudePath = path.join(tempDir, 'claude', 'settings.json');
     cursorPath = path.join(tempDir, 'cursor', 'cli-config.json');
+    copilotPath = path.join(tempDir, 'copilot', 'settings.json');
     logs = [];
     originalLog = console.log;
     console.log = (...args: unknown[]): void => {
@@ -34,8 +36,9 @@ describe('SetupWizard', () => {
   const runWizard = async (
     claudeSettingsPath: string = claudePath,
     cursorConfigPath: string = cursorPath,
+    copilotSettingsPath: string = copilotPath,
   ): Promise<void> => {
-    await new SetupWizard(claudeSettingsPath, cursorConfigPath).run();
+    await new SetupWizard(claudeSettingsPath, cursorConfigPath, copilotSettingsPath).run();
   };
 
   it('writes Claude settings with refreshInterval 2000 and the bunx command', async () => {
@@ -108,6 +111,32 @@ describe('SetupWizard', () => {
 
     expect(fs.existsSync(nestedClaude)).toBe(true);
     expect(fs.existsSync(nestedCursor)).toBe(true);
+  });
+
+  it('writes Copilot CLI settings with command and refreshInterval in seconds', async () => {
+    await runWizard();
+
+    const settings = readJson(copilotPath);
+    const statusLine = settings.statusLine as Record<string, unknown>;
+    expect(statusLine.command).toBe('bunx barnuri/harness-status-line');
+    expect(statusLine.refreshInterval).toBe(2);
+  });
+
+  it('preserves unrelated sibling keys in Copilot CLI settings', async () => {
+    fs.mkdirSync(path.dirname(copilotPath), { recursive: true });
+    fs.writeFileSync(
+      copilotPath,
+      JSON.stringify({ hooks: { SessionStart: [] }, statusLine: { command: 'stale' } }),
+      'utf-8',
+    );
+
+    await runWizard();
+
+    const settings = readJson(copilotPath);
+    expect(settings.hooks).toEqual({ SessionStart: [] });
+    const statusLine = settings.statusLine as Record<string, unknown>;
+    expect(statusLine.command).toBe('bunx barnuri/harness-status-line');
+    expect(statusLine.refreshInterval).toBe(2);
   });
 
   it('logs Status line configured', async () => {

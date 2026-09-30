@@ -13,6 +13,11 @@ export interface ContextWindow {
   readonly cache_read?: number;
   readonly cache_creation?: number;
   readonly current_usage?: unknown;
+  // Copilot CLI statusLine payload: reflects the *current* context fill,
+  // as opposed to used_percentage/total_input_tokens which are cumulative.
+  readonly current_context_used_percentage?: number | null;
+  readonly current_context_tokens?: number;
+  readonly displayed_context_limit?: number;
 }
 
 export interface RateLimit {
@@ -81,6 +86,8 @@ export interface Cost {
   readonly total_api_duration_ms?: number;
   readonly total_lines_added?: number;
   readonly total_lines_removed?: number;
+  // Copilot CLI reports usage in premium requests instead of a USD cost.
+  readonly total_premium_requests?: number;
 }
 
 export interface CreditBalance {
@@ -113,6 +120,10 @@ export interface StatusJSON {
   readonly worktree?: Worktree;
   readonly credits?: CreditBalance;
   readonly cost?: Cost;
+  // Copilot CLI-only fields used to detect its statusLine payload shape.
+  readonly username?: string | null;
+  readonly allow_all_enabled?: boolean;
+  readonly ai_used?: { readonly total_nano_aiu?: number; readonly formatted?: string };
 }
 
 export interface SubagentTask {
@@ -183,6 +194,7 @@ export interface SegmentVisibility {
   readonly vim: boolean;
   readonly worktree: boolean;
   readonly autorun: boolean;
+  readonly yolo: boolean;
 }
 
 export interface SegmentColorMap {
@@ -203,6 +215,7 @@ export interface SegmentColorMap {
   readonly vim: SegmentColorConfig;
   readonly worktree: SegmentColorConfig;
   readonly autorun: SegmentColorConfig;
+  readonly yolo: SegmentColorConfig;
 }
 
 export interface Config {

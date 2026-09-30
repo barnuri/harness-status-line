@@ -67,12 +67,13 @@ Keys:
   segments.vim                true | false
   segments.worktree           true | false
   segments.autorun            true | false
+  segments.yolo               true | false
   refreshInterval             <milliseconds>
   colors.<segment>.<bg|fg>    <R,G,B>  (e.g. 30,41,59)
 
 Segments: folder, git, slug, model, ctxHealthy, ctxWarning, ctxCritical,
           authSubscription, authApi, rateHealthy, rateWarning, rateCritical,
-          effort, workflow, vim, worktree, autorun
+          effort, workflow, vim, worktree, autorun, yolo
 
 Examples:
   config set separatorStyle spaces

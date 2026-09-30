@@ -1169,3 +1169,77 @@ describe('buildSegments() — Cursor payload', () => {
     expect(segs.find(s => s.label === 'ctx')?.value).toBe('42%');
   });
 });
+
+describe('buildSegments() — Copilot CLI payload', () => {
+  function makeCopilotStatus(overrides?: Partial<StatusJSON>): StatusJSON {
+    return {
+      cwd: '/Users/me/project',
+      session_id: 'copilot-session-1',
+      model: { id: 'claude-sonnet-5', display_name: 'Claude Sonnet 5' },
+      workspace: { current_dir: '/Users/me/project' },
+      username: 'octocat',
+      allow_all_enabled: false,
+      version: '1.0.89',
+      cost: { total_api_duration_ms: 1000, total_lines_added: 1, total_lines_removed: 0, total_duration_ms: 1500, total_premium_requests: 3 },
+      context_window: {
+        total_input_tokens: 50000,
+        total_output_tokens: 2000,
+        context_window_size: 200000,
+        used_percentage: 25,
+        current_context_tokens: 42000,
+        displayed_context_limit: 128000,
+        current_context_used_percentage: 32.8,
+      },
+      ...overrides,
+    };
+  }
+
+  it('parses folder, model, and current-context ctx percentage/tokens', () => {
+    const segs = parser.buildSegments(makeCopilotStatus(), cfg);
+    expect(segs.find(s => s.icon === '📁 ')?.value).toBe('project');
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Claude Sonnet 5');
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('33% · 42k/128k');
+  });
+
+  it('prefers current_context_used_percentage over cumulative used_percentage', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      context_window: { used_percentage: 90, current_context_used_percentage: 10 },
+    }), cfg);
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('10%');
+  });
+
+  it('omits the auth segment for Copilot CLI payloads without an api field', () => {
+    const segs = parser.buildSegments(makeCopilotStatus(), cfg);
+    expect(segs.find(s => s.label === 'auth')).toBeUndefined();
+  });
+
+  it('shows the YOLO indicator only when Copilot allow-all mode is enabled', () => {
+    const enabled = parser.buildSegments(makeCopilotStatus({ allow_all_enabled: true }), cfg);
+    const disabled = parser.buildSegments(makeCopilotStatus({ allow_all_enabled: false }), cfg);
+    const missing = parser.buildSegments(makeCopilotStatus({ allow_all_enabled: undefined }), cfg);
+
+    expect(enabled.find(s => s.label === 'yolo')?.value).toBe('on');
+    expect(disabled.find(s => s.label === 'yolo')).toBeUndefined();
+    expect(missing.find(s => s.label === 'yolo')).toBeUndefined();
+  });
+
+  it('can hide the YOLO indicator through segment visibility config', () => {
+    const config = { ...cfg, segments: { ...cfg.segments, yolo: false } };
+    const segs = parser.buildSegments(makeCopilotStatus({ allow_all_enabled: true }), config);
+
+    expect(segs.find(s => s.label === 'yolo')).toBeUndefined();
+  });
+
+  it('renders total_premium_requests as the session-cost segment when total_cost_usd is absent', () => {
+    const segs = parser.buildSegments(makeCopilotStatus(), cfg);
+    const seg = segs.find(s => s.label === 'cost');
+    expect(seg?.value).toBe('3 premium reqs');
+  });
+
+  it('renders singular "premium req" for a single premium request', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      cost: { total_premium_requests: 1 },
+    }), cfg);
+    expect(segs.find(s => s.label === 'cost')?.value).toBe('1 premium req');
+  });
+});

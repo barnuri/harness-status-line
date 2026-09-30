@@ -12,7 +12,7 @@ src/
   types.ts          — StatusJSON, Segment, ANSI color constants
   statusParser.ts   — StatusParser: JSON → typed segments with icons and color rules
   statusRenderer.ts — StatusRenderer: segments → ANSI string with terminal-width wrapping
-  setupWizard.ts    — SetupWizard: writes statusLine into ~/.claude/settings.json and ~/.cursor/cli-config.json
+  setupWizard.ts    — SetupWizard: writes statusLine into ~/.claude/settings.json, ~/.cursor/cli-config.json, and ~/.copilot/settings.json
 scripts/
   preview.ts        — Generates docs/preview.html (static multi-scenario preview)
   animated-preview.ts — Generates docs/animated.html (CSS-animated cycling preview)
@@ -29,7 +29,7 @@ docs/
 ## Key Behaviours
 
 - **Render mode**: stdin is piped → parse JSON → render segments → write to stdout.
-- **Setup mode**: `--setup` flag or interactive TTY → run `SetupWizard` (writes Claude settings and Cursor `cli-config.json`).
+- **Setup mode**: `--setup` flag or interactive TTY → run `SetupWizard` (writes Claude settings, Cursor `cli-config.json`, and Copilot CLI `settings.json`).
 - **Wrapping**: segments wrap to additional lines when total width exceeds `render_width_chars` (Cursor) or else `process.stdout.columns` / `COLUMNS`. Info is never truncated.
 - **Color coding**: context turns yellow >60%, red >80%; rate limits turn yellow <50% remaining, red <20%.
 
@@ -76,7 +76,7 @@ bun run src/index.ts --setup 2>&1 | grep -q "Status line configured" && echo "se
 Expected outcomes:
 - `bun test` passes with ≥ 90% line coverage on `statusParser.ts` and `statusRenderer.ts`.
 - Empty JSON → no output, exit 0.
-- `--setup` → writes `statusLine` into `~/.claude/settings.json` and `~/.cursor/cli-config.json`.
+- `--setup` → writes `statusLine` into `~/.claude/settings.json`, `~/.cursor/cli-config.json`, and `~/.copilot/settings.json`.
 
 ## Claude Code Integration
 
@@ -110,3 +110,18 @@ Cursor CLI reads `statusLine` from `~/.cursor/cli-config.json`. `--setup` writes
 ```
 
 Cursor's payload uses `model.display_name`, `context_window.used_percentage`, and `render_width_chars` (preferred wrap width). Optional `vim`, `worktree`, and `autorun` segments omit when absent. Quota chips come from background Cursor usage fetches (`cursor.com/api/usage-summary` for On-Demand Usage, plus `api2.cursor.sh` plan/request endpoints), not from stdin.
+
+## Copilot CLI Integration
+
+Copilot CLI reads `statusLine.command`/`statusLine.refreshInterval` from `~/.copilot/settings.json` (`refreshInterval` is in **seconds**, unlike Claude/Cursor's milliseconds). `--setup` writes this file alongside the Claude and Cursor settings above.
+
+```json
+{
+  "statusLine": {
+    "command": "bunx barnuri/harness-status-line",
+    "refreshInterval": 2
+  }
+}
+```
+
+Copilot CLI spawns the command and pipes a JSON object shaped like `{ cwd, model: { id, display_name }, workspace: { current_dir }, context_window: { current_context_used_percentage, current_context_tokens, displayed_context_limit, used_percentage, total_input_tokens, context_window_size }, cost: { total_premium_requests }, username, allow_all_enabled, ai_used }` — no `api`/`rate_limits`/`render_width_chars`. `extractContextPercent` prefers `current_context_used_percentage` (the live context fill) over the cumulative `used_percentage`; the auth segment is suppressed since there's no `api` field; `total_premium_requests` renders as the session-cost segment instead of a USD amount; `allow_all_enabled` displays a `yolo: on` chip when true.
