@@ -24,7 +24,7 @@ export class ConfigManager {
       worktree: true,
       autorun: true,
       yolo: true,
-      lines: true,
+      lines: false,
     },
     colors: {
       folder:           { bg: [30, 41, 59],   fg: [248, 250, 252] },
@@ -138,7 +138,10 @@ export class ConfigManager {
       return parseInt(value, 10);
     }
     if (/^\d+,\d+,\d+$/.test(value)) {
-      return value.split(',').map(Number) as RgbColor;
+      const [red, green, blue] = value.split(',').map(Number);
+      if (red !== undefined && green !== undefined && blue !== undefined) {
+        return [red, green, blue] satisfies RgbColor;
+      }
     }
     return value;
   }

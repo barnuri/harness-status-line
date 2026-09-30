@@ -1194,14 +1194,14 @@ describe('buildSegments() — Copilot CLI payload', () => {
     };
   }
 
-  it('parses folder, model, and current-context ctx percentage/tokens', () => {
+  it('parses folder, model, and current-context percentage without cumulative tokens', () => {
     const segs = parser.buildSegments(makeCopilotStatus(), cfg);
     expect(segs.find(s => s.icon === '📁 ')?.value).toBe('project');
     expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Claude Sonnet 5');
-    expect(segs.find(s => s.label === 'ctx')?.value).toBe('33% · 42k/128k');
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('33%');
   });
 
-  it('calculates current-context percentage when Copilot omits percentage fields', () => {
+  it('omits context when Copilot provides only cumulative tokens and a limit', () => {
     const segs = parser.buildSegments(makeCopilotStatus({
       context_window: {
         current_context_tokens: 42000,
@@ -1209,10 +1209,10 @@ describe('buildSegments() — Copilot CLI payload', () => {
       },
     }), cfg);
 
-    expect(segs.find(s => s.label === 'ctx')?.value).toBe('33% · 42k/128k');
+    expect(segs.find(s => s.label === 'ctx')).toBeUndefined();
   });
 
-  it('calculates current-context percentage instead of using cumulative used_percentage', () => {
+  it('uses the fallback percentage without pairing it with cumulative tokens', () => {
     const segs = parser.buildSegments(makeCopilotStatus({
       context_window: {
         used_percentage: 25,
@@ -1221,7 +1221,7 @@ describe('buildSegments() — Copilot CLI payload', () => {
       },
     }), cfg);
 
-    expect(segs.find(s => s.label === 'ctx')?.value).toBe('33% · 42k/128k');
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('25%');
   });
 
   it('prefers current_context_used_percentage over cumulative used_percentage', () => {
@@ -1229,6 +1229,40 @@ describe('buildSegments() — Copilot CLI payload', () => {
       context_window: { used_percentage: 90, current_context_used_percentage: 10 },
     }), cfg);
     expect(segs.find(s => s.label === 'ctx')?.value).toBe('10%');
+  });
+
+  it.each([
+    [67, 158_210, '67%'],
+    [680, 159_690, '68%'],
+    [813, 1_625_120, '81%'],
+  ])('normalizes Copilot percentage %s without displaying cumulative tokens', (reportedPercent, tokens, expected) => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      context_window: {
+        current_context_used_percentage: reportedPercent,
+        current_context_tokens: tokens,
+        displayed_context_limit: 200_000,
+        total_input_tokens: 400_000,
+      },
+    }), cfg);
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe(expected);
+  });
+
+  it('uses the reported current percentage alone when only cumulative total_input_tokens are available', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      context_window: {
+        current_context_used_percentage: 67,
+        total_input_tokens: 158_210,
+        context_window_size: 200_000,
+      },
+    }), cfg);
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('67%');
+  });
+
+  it('omits a malformed live percentage greater than 1000', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      context_window: { current_context_used_percentage: 1_200 },
+    }), cfg);
+    expect(segs.find(s => s.label === 'ctx')).toBeUndefined();
   });
 
   it('omits the auth segment for Copilot CLI payloads without an api field', () => {
@@ -1277,15 +1311,15 @@ describe('buildSegments() — Copilot CLI payload', () => {
   it('shows lines added/removed for Copilot payloads', () => {
     const segs = parser.buildSegments(makeCopilotStatus({
       cost: { total_lines_added: 12, total_lines_removed: 3, total_premium_requests: 3 },
-    }), cfg);
+    }), { ...cfg, segments: { ...cfg.segments, lines: true } });
     expect(segs.find(s => s.label === 'lines')?.value).toBe('+12/-3');
   });
 
-  it('omits the lines chip when nothing changed or visibility is off', () => {
+  it('omits the lines chip by default and when nothing changed', () => {
     const unchanged = parser.buildSegments(makeCopilotStatus({
       cost: { total_lines_added: 0, total_lines_removed: 0 },
-    }), cfg);
-    const hidden = parser.buildSegments(makeCopilotStatus(), { ...cfg, segments: { ...cfg.segments, lines: false } });
+    }), { ...cfg, segments: { ...cfg.segments, lines: true } });
+    const hidden = parser.buildSegments(makeCopilotStatus(), cfg);
 
     expect(unchanged.find(s => s.label === 'lines')).toBeUndefined();
     expect(hidden.find(s => s.label === 'lines')).toBeUndefined();

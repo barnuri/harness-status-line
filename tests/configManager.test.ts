@@ -27,7 +27,7 @@ describe('ConfigManager — DEFAULT_CONFIG', () => {
     expect(ConfigManager.DEFAULT_CONFIG.separatorStyle).toBe('spaces');
   });
 
-  it('DEFAULT_CONFIG enables all segments', () => {
+  it('DEFAULT_CONFIG enables standard segments but hides lines changed', () => {
     const { segments } = ConfigManager.DEFAULT_CONFIG;
     expect(segments.folder).toBe(true);
     expect(segments.git).toBe(true);
@@ -42,7 +42,7 @@ describe('ConfigManager — DEFAULT_CONFIG', () => {
     expect(segments.worktree).toBe(true);
     expect(segments.autorun).toBe(true);
     expect(segments.yolo).toBe(true);
-    expect(segments.lines).toBe(true);
+    expect(segments.lines).toBe(false);
   });
 
   it('DEFAULT_CONFIG has refreshInterval of 2000', () => {
@@ -93,6 +93,13 @@ describe('ConfigManager — load()', () => {
     expect(config.segments.model).toBe(true);
     expect(config.segments.context).toBe(true);
     expect(config.segments.rateLimits).toBe(true);
+    expect(config.segments.lines).toBe(false);
+  });
+
+  it('preserves an explicit opt-in for lines changed', () => {
+    writeConfigFile(JSON.stringify({ segments: { lines: true } }));
+    const config = new ConfigManager().load();
+    expect(config.segments.lines).toBe(true);
   });
 
   it('merges partial colors with defaults (only folder.bg changed)', () => {

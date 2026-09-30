@@ -340,13 +340,22 @@ export class StatusParser {
   private extractContextPercent(status: StatusJSON): number | null {
     const ctx = status.context_window;
     if (!ctx) { return null; }
-    if (typeof ctx.current_context_used_percentage === 'number') { return Math.round(ctx.current_context_used_percentage); }
-    if (
-      typeof ctx.current_context_tokens === 'number'
-      && typeof ctx.displayed_context_limit === 'number'
-      && ctx.displayed_context_limit > 0
-    ) {
-      return Math.round((ctx.current_context_tokens / ctx.displayed_context_limit) * 100);
+    const isCopilotCli = this.isCopilotCliPayload(status);
+    if (isCopilotCli) {
+      const currentPercent = this.normalizeCopilotContextPercent(ctx.current_context_used_percentage);
+      if (currentPercent !== null) { return currentPercent; }
+    }
+    const currentSize = this.extractContextWindowSize(status);
+    if (!isCopilotCli
+      && typeof ctx.current_context_tokens === 'number' && Number.isFinite(ctx.current_context_tokens)
+      && ctx.current_context_tokens >= 0 && currentSize !== null) {
+      return Math.round((ctx.current_context_tokens / currentSize) * 100);
+    }
+    if (typeof ctx.current_context_used_percentage === 'number'
+      && Number.isFinite(ctx.current_context_used_percentage)
+      && ctx.current_context_used_percentage >= StatusParser.CTX_PERCENT_MIN
+      && ctx.current_context_used_percentage <= StatusParser.CTX_PERCENT_MAX) {
+      return Math.round(ctx.current_context_used_percentage);
     }
     if (typeof ctx.used_percentage === 'number') { return Math.round(ctx.used_percentage); }
     if (typeof ctx.percentage === 'number') { return Math.round(ctx.percentage); }
@@ -362,7 +371,17 @@ export class StatusParser {
     return null;
   }
 
+  private normalizeCopilotContextPercent(percent: number | null | undefined): number | null {
+    if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < StatusParser.CTX_PERCENT_MIN) {
+      return null;
+    }
+    const normalized = percent > StatusParser.CTX_PERCENT_MAX ? percent / 10 : percent;
+    if (normalized > StatusParser.CTX_PERCENT_MAX) { return null; }
+    return Math.round(normalized);
+  }
+
   private formatContextValue(status: StatusJSON, percent: number): string {
+    if (this.isCopilotCliPayload(status)) { return `${percent}%`; }
     const tokens = this.extractTokenCount(status);
     if (typeof tokens !== 'number' || !Number.isFinite(tokens)) { return `${percent}%`; }
     const size = this.extractContextWindowSize(status);
