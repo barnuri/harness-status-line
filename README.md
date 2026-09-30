@@ -149,12 +149,13 @@ Note `refreshInterval` is in **seconds** here (Copilot CLI's own convention), un
 |---|---|---|
 | folder | `cwd` / `workspace.current_dir` | Basename only. |
 | model | `model.display_name` | Falls back to `model.id`. |
-| ctx | `context_window.current_context_used_percentage` | Falls back to `used_percentage` (cumulative) when absent. Absolute size uses `current_context_tokens`/`displayed_context_limit`. |
-| cost | `cost.total_premium_requests` | Shown as `N premium reqs` since Copilot CLI bills in premium requests, not USD. |
+| ctx | `context_window.current_context_used_percentage` | If absent, calculates from `current_context_tokens`/`displayed_context_limit` before falling back to cumulative percentages. |
+| cost | `ai_used.total_nano_aiu` | AI credits converted to USD (1 credit = $0.01) and shown as `$X.XX session`, like Claude Code. Omitted when `ai_used` is absent. |
+| lines | `cost.total_lines_added` / `total_lines_removed` | Shown as `+12/-3`. Hidden when both are 0. |
 | yolo | `allow_all_enabled` | Shows `yolo: on` when Copilot CLI's allow-all mode is enabled. |
 
-Copilot CLI doesn't send `api`/`rate_limits`, so the auth and quota chips are omitted rather than showing a misleading default.
-Hide the YOLO chip with `bunx barnuri/harness-status-line config set segments.yolo false`.
+Copilot CLI doesn't send `api`/`rate_limits` or a remaining-credit balance, so auth and quota chips are omitted rather than showing a misleading default. The payload provides session premium-request usage, not the account's remaining allowance.
+Hide the YOLO or lines chip with `bunx barnuri/harness-status-line config set segments.yolo false` (or `segments.lines`).
 
 ## Codex
 

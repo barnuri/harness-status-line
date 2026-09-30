@@ -27,6 +27,10 @@ export class StatusParser {
   private static readonly DOLLAR_DECIMALS = 2;
   private static readonly SESSION_COST_LABEL = 'cost';
   private static readonly SESSION_COST_ICON = '💵 ';
+  private static readonly LINES_LABEL = 'lines';
+  private static readonly LINES_ICON = '✏ ';
+  private static readonly NANO_PER_AI_CREDIT = 1_000_000_000;
+  private static readonly USD_PER_AI_CREDIT = 0.01;
 
   private readonly autoModelReader: CursorAutoModelReader;
 
@@ -138,6 +142,13 @@ export class StatusParser {
         fg: colors.yolo.fg,
         bg: colors.yolo.bg,
       });
+    }
+
+    if (visibility.lines) {
+      const lines = this.buildLinesSegment(status, colors);
+      if (lines) {
+        segments.push(lines);
+      }
     }
 
     if (visibility.rateLimits) {
@@ -330,6 +341,13 @@ export class StatusParser {
     const ctx = status.context_window;
     if (!ctx) { return null; }
     if (typeof ctx.current_context_used_percentage === 'number') { return Math.round(ctx.current_context_used_percentage); }
+    if (
+      typeof ctx.current_context_tokens === 'number'
+      && typeof ctx.displayed_context_limit === 'number'
+      && ctx.displayed_context_limit > 0
+    ) {
+      return Math.round((ctx.current_context_tokens / ctx.displayed_context_limit) * 100);
+    }
     if (typeof ctx.used_percentage === 'number') { return Math.round(ctx.used_percentage); }
     if (typeof ctx.percentage === 'number') { return Math.round(ctx.percentage); }
     if (typeof ctx.remaining_percentage === 'number') {
@@ -421,7 +439,7 @@ export class StatusParser {
   }
 
   private buildSessionCostSegment(status: StatusJSON, colors: SegmentColorMap): Segment | null {
-    const totalUsd = status.cost?.total_cost_usd;
+    const totalUsd = status.cost?.total_cost_usd ?? this.aiUsedUsd(status);
     if (typeof totalUsd === 'number' && Number.isFinite(totalUsd)) {
       return {
         icon: StatusParser.SESSION_COST_ICON,
@@ -432,19 +450,37 @@ export class StatusParser {
       };
     }
 
-    // Copilot CLI bills in premium requests rather than a USD amount.
-    const premiumRequests = status.cost?.total_premium_requests;
-    if (typeof premiumRequests === 'number' && Number.isFinite(premiumRequests)) {
-      return {
-        icon: StatusParser.SESSION_COST_ICON,
-        label: StatusParser.SESSION_COST_LABEL,
-        value: `${premiumRequests} premium req${premiumRequests === 1 ? '' : 's'}`,
-        fg: colors.rateHealthy.fg,
-        bg: colors.rateHealthy.bg,
-      };
-    }
-
     return null;
+  }
+
+  private aiUsedUsd(status: StatusJSON): number | null {
+    const nano = status.ai_used?.total_nano_aiu;
+    if (typeof nano === 'number' && Number.isFinite(nano)) {
+      return (nano / StatusParser.NANO_PER_AI_CREDIT) * StatusParser.USD_PER_AI_CREDIT;
+    }
+    const credits = Number.parseFloat(status.ai_used?.formatted ?? '');
+    return Number.isFinite(credits) ? credits * StatusParser.USD_PER_AI_CREDIT : null;
+  }
+
+  private buildLinesSegment(status: StatusJSON, colors: SegmentColorMap): Segment | null {
+    if (!this.isCopilotCliPayload(status)) {
+      return null;
+    }
+    const added = status.cost?.total_lines_added;
+    const removed = status.cost?.total_lines_removed;
+    if (typeof added !== 'number' || typeof removed !== 'number') {
+      return null;
+    }
+    if (added === 0 && removed === 0) {
+      return null;
+    }
+    return {
+      icon: StatusParser.LINES_ICON,
+      label: StatusParser.LINES_LABEL,
+      value: `+${added}/-${removed}`,
+      fg: colors.lines.fg,
+      bg: colors.lines.bg,
+    };
   }
 
   private creditUsedPercent(credits: CreditBalance): number | null {

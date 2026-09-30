@@ -24,6 +24,7 @@ export class ConfigManager {
       worktree: true,
       autorun: true,
       yolo: true,
+      lines: true,
     },
     colors: {
       folder:           { bg: [30, 41, 59],   fg: [248, 250, 252] },
@@ -44,6 +45,7 @@ export class ConfigManager {
       worktree:         { bg: [194, 65, 12],  fg: [248, 250, 252] },
       autorun:          { bg: [190, 24, 93],  fg: [248, 250, 252] },
       yolo:             { bg: [185, 28, 28],  fg: [248, 250, 252] },
+      lines:            { bg: [63, 63, 70],   fg: [248, 250, 252] },
     },
   };
 

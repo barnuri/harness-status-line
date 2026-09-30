@@ -195,6 +195,7 @@ export interface SegmentVisibility {
   readonly worktree: boolean;
   readonly autorun: boolean;
   readonly yolo: boolean;
+  readonly lines: boolean;
 }
 
 export interface SegmentColorMap {
@@ -216,6 +217,7 @@ export interface SegmentColorMap {
   readonly worktree: SegmentColorConfig;
   readonly autorun: SegmentColorConfig;
   readonly yolo: SegmentColorConfig;
+  readonly lines: SegmentColorConfig;
 }
 
 export interface Config {

@@ -1201,6 +1201,29 @@ describe('buildSegments() — Copilot CLI payload', () => {
     expect(segs.find(s => s.label === 'ctx')?.value).toBe('33% · 42k/128k');
   });
 
+  it('calculates current-context percentage when Copilot omits percentage fields', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      context_window: {
+        current_context_tokens: 42000,
+        displayed_context_limit: 128000,
+      },
+    }), cfg);
+
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('33% · 42k/128k');
+  });
+
+  it('calculates current-context percentage instead of using cumulative used_percentage', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      context_window: {
+        used_percentage: 25,
+        current_context_tokens: 42000,
+        displayed_context_limit: 128000,
+      },
+    }), cfg);
+
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('33% · 42k/128k');
+  });
+
   it('prefers current_context_used_percentage over cumulative used_percentage', () => {
     const segs = parser.buildSegments(makeCopilotStatus({
       context_window: { used_percentage: 90, current_context_used_percentage: 10 },
@@ -1230,16 +1253,46 @@ describe('buildSegments() — Copilot CLI payload', () => {
     expect(segs.find(s => s.label === 'yolo')).toBeUndefined();
   });
 
-  it('renders total_premium_requests as the session-cost segment when total_cost_usd is absent', () => {
+  it('does not show premium requests when ai_used is absent', () => {
     const segs = parser.buildSegments(makeCopilotStatus(), cfg);
-    const seg = segs.find(s => s.label === 'cost');
-    expect(seg?.value).toBe('3 premium reqs');
+    expect(segs.find(s => s.label === 'cost')).toBeUndefined();
   });
 
-  it('renders singular "premium req" for a single premium request', () => {
+  it('shows AI credits as session dollars instead of premium requests (1 credit = $0.01)', () => {
     const segs = parser.buildSegments(makeCopilotStatus({
       cost: { total_premium_requests: 1 },
+      ai_used: { total_nano_aiu: 250_000_000_000, formatted: '250.00' },
     }), cfg);
-    expect(segs.find(s => s.label === 'cost')?.value).toBe('1 premium req');
+    expect(segs.find(s => s.label === 'cost')?.value).toBe('$2.50 session');
+  });
+
+  it('falls back to ai_used.formatted when total_nano_aiu is absent', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      cost: {},
+      ai_used: { formatted: '1234.5' },
+    }), cfg);
+    expect(segs.find(s => s.label === 'cost')?.value).toBe('$12.35 session');
+  });
+
+  it('shows lines added/removed for Copilot payloads', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      cost: { total_lines_added: 12, total_lines_removed: 3, total_premium_requests: 3 },
+    }), cfg);
+    expect(segs.find(s => s.label === 'lines')?.value).toBe('+12/-3');
+  });
+
+  it('omits the lines chip when nothing changed or visibility is off', () => {
+    const unchanged = parser.buildSegments(makeCopilotStatus({
+      cost: { total_lines_added: 0, total_lines_removed: 0 },
+    }), cfg);
+    const hidden = parser.buildSegments(makeCopilotStatus(), { ...cfg, segments: { ...cfg.segments, lines: false } });
+
+    expect(unchanged.find(s => s.label === 'lines')).toBeUndefined();
+    expect(hidden.find(s => s.label === 'lines')).toBeUndefined();
+  });
+
+  it('does not show the lines chip on Claude Code payloads', () => {
+    const segs = parser.buildSegments({ cost: { total_lines_added: 12, total_lines_removed: 3 } }, cfg);
+    expect(segs.find(s => s.label === 'lines')).toBeUndefined();
   });
 });

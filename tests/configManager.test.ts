@@ -42,6 +42,7 @@ describe('ConfigManager — DEFAULT_CONFIG', () => {
     expect(segments.worktree).toBe(true);
     expect(segments.autorun).toBe(true);
     expect(segments.yolo).toBe(true);
+    expect(segments.lines).toBe(true);
   });
 
   it('DEFAULT_CONFIG has refreshInterval of 2000', () => {
@@ -53,7 +54,7 @@ describe('ConfigManager — DEFAULT_CONFIG', () => {
     for (const key of [
       'folder', 'git', 'model', 'ctxHealthy', 'ctxWarning', 'ctxCritical',
       'authSubscription', 'authApi', 'rateHealthy', 'rateWarning', 'rateCritical',
-      'slug', 'effort', 'workflow', 'vim', 'worktree', 'autorun', 'yolo',
+      'slug', 'effort', 'workflow', 'vim', 'worktree', 'autorun', 'yolo', 'lines',
     ]) {
       const c = colors[key as keyof typeof colors];
       expect(c.bg).toHaveLength(3);
