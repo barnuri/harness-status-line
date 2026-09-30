@@ -15,9 +15,23 @@ export function formatTokenCount(count: number): string {
  */
 export function formatTokenPair(used: number, total: number): string {
   if (total <= 0) { return formatTokenCount(used); }
-  const divisor = total >= MILLION ? MILLION : total >= THOUSAND ? THOUSAND : 1;
-  const unit = divisor === MILLION ? 'M' : divisor === THOUSAND ? 'k' : '';
+  const divisor = unitDivisor(total);
+  const unit = unitSuffix(divisor);
   return `${scaleToUnit(used, divisor)}${unit}/${scaleToUnit(total, divisor)}${unit}`;
+}
+
+/** Context-window limit without trailing zeros, e.g. 1_000_000 -> "1M", 128_000 -> "128k". */
+export function formatTokenLimit(total: number): string {
+  const divisor = unitDivisor(total);
+  return `${scaleToUnit(total, divisor)}${unitSuffix(divisor)}`;
+}
+
+function unitDivisor(total: number): number {
+  return total >= MILLION ? MILLION : total >= THOUSAND ? THOUSAND : 1;
+}
+
+function unitSuffix(divisor: number): string {
+  return divisor === MILLION ? 'M' : divisor === THOUSAND ? 'k' : '';
 }
 
 function scaleToUnit(count: number, divisor: number): string {

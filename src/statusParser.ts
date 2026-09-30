@@ -1,8 +1,9 @@
 import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance } from './types.ts';
-import { formatTokenCount, formatTokenPair } from './shared/tokenFormat.ts';
+import { formatTokenCount, formatTokenLimit, formatTokenPair } from './shared/tokenFormat.ts';
 import { resolveSessionSlug } from './shared/sessionSlug.ts';
 import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
 import { CursorAutoModelReader } from './shared/cursorAutoModelReader.ts';
+import { CopilotEffortReader } from './shared/copilotEffortReader.ts';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -12,6 +13,7 @@ export class StatusParser {
   private static readonly KNOWN_RATE_LIMIT_KEYS: ReadonlyArray<string> = ['session', 'five_hour', 'week', 'seven_day', 'day'];
   private static readonly WORKFLOW_STALE_AFTER_SECONDS = 120;
   private static readonly CTX_VALUE_SEPARATOR = '·';
+  private static readonly CONTEXT_SIZE_IN_NAME = /\b\d+(?:\.\d+)?\s*[kKmM]\b/;
   private static readonly MAX_MODE_SUFFIX = ' · max';
   private static readonly AUTO_MODEL_NAMES: ReadonlyArray<string> = ['auto', 'default'];
   private static readonly AUTORUN_LABEL = 'autorun';
@@ -33,9 +35,11 @@ export class StatusParser {
   private static readonly USD_PER_AI_CREDIT = 0.01;
 
   private readonly autoModelReader: CursorAutoModelReader;
+  private readonly copilotEffortReader: CopilotEffortReader;
 
-  constructor(autoModelReader?: CursorAutoModelReader) {
+  constructor(autoModelReader?: CursorAutoModelReader, copilotEffortReader?: CopilotEffortReader) {
     this.autoModelReader = autoModelReader ?? new CursorAutoModelReader();
+    this.copilotEffortReader = copilotEffortReader ?? new CopilotEffortReader();
   }
 
   parse(raw: string): StatusJSON {
@@ -84,11 +88,17 @@ export class StatusParser {
       }
     }
 
+    const effort = visibility.effort ? this.extractEffort(status) : null;
+
     if (visibility.model) {
-      const model = this.extractModel(status);
+      const model = this.extractModel(status, effort);
       if (model) {
         segments.push({ icon: '🤖 ', label: '', value: model, fg: colors.model.fg, bg: colors.model.bg });
       }
+    }
+
+    if (effort) {
+      segments.push({ icon: '🧠 ', label: '', value: effort, fg: colors.effort.fg, bg: colors.effort.bg });
     }
 
     if (visibility.vim) {
@@ -110,13 +120,6 @@ export class StatusParser {
       const authSeg = this.buildAuthSegment(status, colors);
       if (authSeg) {
         segments.push(authSeg);
-      }
-    }
-
-    if (visibility.effort) {
-      const effort = this.extractEffort(status);
-      if (effort) {
-        segments.push({ icon: '🧠 ', label: '', value: effort, fg: colors.effort.fg, bg: colors.effort.bg });
       }
     }
 
@@ -291,7 +294,7 @@ export class StatusParser {
       ?? process.env['DEEPSEEK_SESSION_ID'];
   }
 
-  private extractModel(status: StatusJSON): string | null {
+  private extractModel(status: StatusJSON, shownEffort: string | null): string | null {
     const raw = status.model;
     if (!raw) { return null; }
     if (typeof raw === 'string') { return this.withResolvedAutoModel(raw, status); }
@@ -305,7 +308,17 @@ export class StatusParser {
     if (raw.max_mode === true) {
       value = `${value}${StatusParser.MAX_MODE_SUFFIX}`;
     }
-    return value;
+    return this.withCopilotContextSize(value, status, shownEffort);
+  }
+
+  // Copilot's display_name embeds the effort (e.g. "claude-opus-5.5 · medium"); drop it when the 🧠 segment shows it.
+  private withCopilotContextSize(rawName: string, status: StatusJSON, shownEffort: string | null): string {
+    if (!this.isCopilotCliPayload(status)) { return rawName; }
+    const effortSuffix = shownEffort === null ? null : ` ${StatusParser.CTX_VALUE_SEPARATOR} ${shownEffort}`;
+    const name = effortSuffix !== null && rawName.endsWith(effortSuffix) ? rawName.slice(0, -effortSuffix.length) : rawName;
+    const size = this.extractContextWindowSize(status);
+    if (size === null || StatusParser.CONTEXT_SIZE_IN_NAME.test(name)) { return name; }
+    return `${name} (${formatTokenLimit(size)})`;
   }
 
   private withResolvedAutoModel(name: string, status: StatusJSON): string {
@@ -330,7 +343,9 @@ export class StatusParser {
   }
 
   private extractEffort(status: StatusJSON): string | null {
-    return status.effort?.level ?? null;
+    if (status.effort?.level) { return status.effort.level; }
+    if (!this.isCopilotCliPayload(status)) { return null; }
+    return this.copilotEffortReader.readEffort(status.session_id);
   }
 
   private extractWorkflowActive(status: StatusJSON): boolean {
@@ -343,7 +358,7 @@ export class StatusParser {
     const isCopilotCli = this.isCopilotCliPayload(status);
     if (isCopilotCli) {
       const currentPercent = this.normalizeCopilotContextPercent(ctx.current_context_used_percentage);
-      if (currentPercent !== null) { return currentPercent; }
+      if (currentPercent !== null) { return Math.round(currentPercent); }
     }
     const currentSize = this.extractContextWindowSize(status);
     if (!isCopilotCli
@@ -377,16 +392,25 @@ export class StatusParser {
     }
     const normalized = percent > StatusParser.CTX_PERCENT_MAX ? percent / 10 : percent;
     if (normalized > StatusParser.CTX_PERCENT_MAX) { return null; }
-    return Math.round(normalized);
+    return normalized;
   }
 
   private formatContextValue(status: StatusJSON, percent: number): string {
-    if (this.isCopilotCliPayload(status)) { return `${percent}%`; }
+    if (this.isCopilotCliPayload(status)) { return this.formatCopilotContextValue(status, percent); }
     const tokens = this.extractTokenCount(status);
     if (typeof tokens !== 'number' || !Number.isFinite(tokens)) { return `${percent}%`; }
     const size = this.extractContextWindowSize(status);
     const absolute = size === null ? formatTokenCount(tokens) : formatTokenPair(tokens, size);
     return `${percent}% ${StatusParser.CTX_VALUE_SEPARATOR} ${absolute}`;
+  }
+
+  // Copilot's current_context_tokens is cumulative, so derive live usage from the live percentage.
+  private formatCopilotContextValue(status: StatusJSON, percent: number): string {
+    const livePercent = this.normalizeCopilotContextPercent(status.context_window?.current_context_used_percentage);
+    const size = this.extractContextWindowSize(status);
+    if (livePercent === null || size === null) { return `${percent}%`; }
+    const used = Math.round((livePercent / StatusParser.CTX_PERCENT_MAX) * size);
+    return `${percent}% ${StatusParser.CTX_VALUE_SEPARATOR} ${formatTokenPair(used, size)}`;
   }
 
   private extractContextWindowSize(status: StatusJSON): number | null {

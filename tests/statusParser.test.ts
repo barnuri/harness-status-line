@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import { StatusParser } from '../src/statusParser.ts';
 import { CursorAutoModelReader } from '../src/shared/cursorAutoModelReader.ts';
+import { CopilotEffortReader } from '../src/shared/copilotEffortReader.ts';
 import { ConfigManager } from '../src/configManager.ts';
 import { writeWorkflowActiveState } from '../src/shared/workflowActiveState.ts';
 import type { Config, StatusJSON } from '../src/types.ts';
@@ -1194,11 +1195,63 @@ describe('buildSegments() — Copilot CLI payload', () => {
     };
   }
 
-  it('parses folder, model, and current-context percentage without cumulative tokens', () => {
+  it('parses folder, model, and current-context percentage with live tokens derived from the limit', () => {
     const segs = parser.buildSegments(makeCopilotStatus(), cfg);
     expect(segs.find(s => s.icon === '📁 ')?.value).toBe('project');
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Claude Sonnet 5 (128k)');
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('33% · 41.98k/128k');
+  });
+
+  it('appends the selected 1M context size to the Copilot model name', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      model: { id: 'claude-opus-5.5', display_name: 'Claude Opus 5.5' },
+      context_window: { current_context_used_percentage: 9, displayed_context_limit: 1_000_000 },
+    }), cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Claude Opus 5.5 (1M)');
+  });
+
+  it('does not duplicate a context size already present in the Copilot model name', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      model: { id: 'claude-opus-5.5', display_name: 'Claude Opus 5.5 (1M context)' },
+      context_window: { current_context_used_percentage: 9, displayed_context_limit: 1_000_000 },
+    }), cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Claude Opus 5.5 (1M context)');
+  });
+
+  it('shows the Copilot model-picker effort with the brain icon', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hsl-copilot-effort-'));
+    try {
+      fs.mkdirSync(path.join(root, 'copilot-session-1'));
+      fs.writeFileSync(path.join(root, 'copilot-session-1', 'events.jsonl'),
+        JSON.stringify({ type: 'session.model_change', data: { reasoningEffort: 'high' } }) + '\n');
+      const effortParser = new StatusParser(undefined, new CopilotEffortReader(root));
+      const segs = effortParser.buildSegments(makeCopilotStatus(), cfg);
+      expect(segs.find(s => s.icon === '🧠 ')?.value).toBe('high');
+      const icons = segs.map(s => s.icon);
+      expect(icons.indexOf('🧠 ')).toBe(icons.indexOf('🤖 ') + 1);
+
+      const named = makeCopilotStatus({
+        model: { id: 'claude-opus-5.5', display_name: 'claude-opus-5.5 · high' },
+        context_window: { current_context_used_percentage: 19, displayed_context_limit: 328_000 },
+      });
+      expect(effortParser.buildSegments(named, cfg).find(s => s.icon === '🤖 ')?.value).toBe('claude-opus-5.5 (328k)');
+      const noEffortCfg = makeConfig({ segments: { ...cfg.segments, effort: false } });
+      expect(effortParser.buildSegments(named, noEffortCfg).find(s => s.icon === '🤖 ')?.value).toBe('claude-opus-5.5 · high (328k)');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the plain Copilot model name when no context limit is reported', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({ context_window: { current_context_used_percentage: 9 } }), cfg);
     expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Claude Sonnet 5');
-    expect(segs.find(s => s.label === 'ctx')?.value).toBe('33%');
+  });
+
+  it('shows used/total for a 1M Copilot context window', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      context_window: { current_context_used_percentage: 9, current_context_tokens: 5_000_000, displayed_context_limit: 1_000_000 },
+    }), cfg);
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('9% · 0.09M/1M');
   });
 
   it('omits context when Copilot provides only cumulative tokens and a limit', () => {
@@ -1232,10 +1285,10 @@ describe('buildSegments() — Copilot CLI payload', () => {
   });
 
   it.each([
-    [67, 158_210, '67%'],
-    [680, 159_690, '68%'],
-    [813, 1_625_120, '81%'],
-  ])('normalizes Copilot percentage %s without displaying cumulative tokens', (reportedPercent, tokens, expected) => {
+    [67, 158_210, '67% · 134k/200k'],
+    [680, 159_690, '68% · 136k/200k'],
+    [813, 1_625_120, '81% · 162.6k/200k'],
+  ])('normalizes Copilot percentage %s and derives live tokens instead of cumulative ones', (reportedPercent, tokens, expected) => {
     const segs = parser.buildSegments(makeCopilotStatus({
       context_window: {
         current_context_used_percentage: reportedPercent,
@@ -1247,7 +1300,7 @@ describe('buildSegments() — Copilot CLI payload', () => {
     expect(segs.find(s => s.label === 'ctx')?.value).toBe(expected);
   });
 
-  it('uses the reported current percentage alone when only cumulative total_input_tokens are available', () => {
+  it('derives live tokens from context_window_size when displayed_context_limit is absent', () => {
     const segs = parser.buildSegments(makeCopilotStatus({
       context_window: {
         current_context_used_percentage: 67,
@@ -1255,7 +1308,7 @@ describe('buildSegments() — Copilot CLI payload', () => {
         context_window_size: 200_000,
       },
     }), cfg);
-    expect(segs.find(s => s.label === 'ctx')?.value).toBe('67%');
+    expect(segs.find(s => s.label === 'ctx')?.value).toBe('67% · 134k/200k');
   });
 
   it('omits a malformed live percentage greater than 1000', () => {

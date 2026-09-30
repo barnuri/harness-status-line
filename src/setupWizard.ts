@@ -57,7 +57,7 @@ export class SetupWizard {
     console.log(`   Command: ${SetupWizard.COMMAND}`);
     console.log('\nRestart Claude Code, Cursor, or Copilot CLI to activate the status line.\n');
     console.log('Status line will show:');
-    console.log('  📁 Current folder | 🤖 Model | 📊 Context% | 🔢 Tokens | 🧠 Effort | ⚙ Workflow | ⏱ Rate limits%\n');
+    console.log('  📁 Current folder | 🤖 Model | 🧠 Effort | 📊 Context% | 🔢 Tokens | ⚙ Workflow | ⏱ Rate limits%\n');
   }
 
   private resolveSettingsPath(): string {
