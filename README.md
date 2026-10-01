@@ -155,7 +155,7 @@ Note `refreshInterval` is in **seconds** here (Copilot CLI's own convention), un
 | lines | `cost.total_lines_added` / `total_lines_removed` | Off by default; when enabled, shown as `+12/-3` unless both are 0. |
 | yolo | `allow_all_enabled` | Shows `yolo: on` when Copilot CLI's allow-all mode is enabled. |
 
-Copilot CLI doesn't send `api`/`rate_limits` or plan quota in custom status-line stdin. `bun run src/index.ts --setup` installs a user-scoped extension that captures quota snapshots from completed model calls, caching them in `~/.copilot/harness-status-line-quota.json`. The status line rereads the cache on each 2-second run; Copilot only supplies a newer snapshot after a model call, so the quota cannot be proactively refreshed while idle. Copilot's native `/statusline quota` can show its own quota item independently.
+Copilot CLI doesn't send `api`/`rate_limits` or plan quota in custom status-line stdin. `bun run src/index.ts --setup` installs a user-scoped extension that refreshes quota snapshots from Copilot's session model-list RPC every 30 seconds and also captures completed model-call snapshots. The cache lives at `~/.copilot/harness-status-line-quota.json`, and the status line rereads it every 2 seconds. Copilot's native `/statusline quota` can show its own quota item independently.
 Hide the YOLO chip with `bun run src/index.ts config set segments.yolo false`. Enable the lines chip with `bun run src/index.ts config set segments.lines true`.
 
 ## Codex
