@@ -1,4 +1,13 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 
@@ -10,9 +19,14 @@ export class CopilotQuotaWriter {
 
   constructor(filePath = CopilotQuotaWriter.FILE_PATH) {
     this.filePath = filePath;
+    this.lockPath = `${filePath}.lock`;
   }
 
   write(snapshots, updatedAt = Date.now(), polledAt = this.getPolledAt(), source = null) {
+    return this.#withLock(() => this.#writeSnapshots(snapshots, updatedAt, polledAt, source), false);
+  }
+
+  #writeSnapshots(snapshots, updatedAt, polledAt, source) {
     if (!this.#isRecord(snapshots)) {
       return false;
     }
@@ -82,38 +96,73 @@ export class CopilotQuotaWriter {
   }
 
   recordAssistantUsage(updatedAt = Date.now()) {
-    const previous = this.#readState();
-    const previousUpdatedAt = this.#asNumber(previous?.updatedAt);
-    const polledAt = this.#asNumber(previous?.polledAt);
-    const ghUpdatedAt = this.#asNumber(previous?.ghUpdatedAt);
-    const source = typeof previous?.source === "string" ? previous.source : null;
-    const quotas = Array.isArray(previous?.quotas) ? previous.quotas : [];
-    this.#writeState({
-      updatedAt: previousUpdatedAt ?? updatedAt,
-      ...(polledAt !== null ? { polledAt } : {}),
-      ...(source !== null ? { source } : {}),
-      ...(ghUpdatedAt !== null ? { ghUpdatedAt } : {}),
-      assistantUsageUpdatedAt: updatedAt,
-      quotas,
-    });
+    return this.#withLock(() => {
+      const previous = this.#readState();
+      const previousUpdatedAt = this.#asNumber(previous?.updatedAt);
+      const polledAt = this.#asNumber(previous?.polledAt);
+      const ghUpdatedAt = this.#asNumber(previous?.ghUpdatedAt);
+      const source = typeof previous?.source === "string" ? previous.source : null;
+      const quotas = Array.isArray(previous?.quotas) ? previous.quotas : [];
+      this.#writeState({
+        updatedAt: previousUpdatedAt ?? updatedAt,
+        ...(polledAt !== null ? { polledAt } : {}),
+        ...(source !== null ? { source } : {}),
+        ...(ghUpdatedAt !== null ? { ghUpdatedAt } : {}),
+        assistantUsageUpdatedAt: updatedAt,
+        quotas,
+      });
+      return true;
+    }, false);
+  }
+
+  claimPoll(polledAt, intervalMs) {
+    return this.#withLock(() => {
+      const previous = this.#readState();
+      const previousPolledAt = this.#asNumber(previous?.polledAt);
+      if (
+        previousPolledAt !== null &&
+        polledAt >= previousPolledAt &&
+        polledAt - previousPolledAt < intervalMs
+      ) {
+        return false;
+      }
+
+      const updatedAt = this.#asNumber(previous?.updatedAt) ?? polledAt;
+      const source = typeof previous?.source === "string" ? previous.source : null;
+      const ghUpdatedAt = this.#asNumber(previous?.ghUpdatedAt);
+      const assistantUsageUpdatedAt = this.#asNumber(previous?.assistantUsageUpdatedAt);
+      const quotas = Array.isArray(previous?.quotas) ? previous.quotas : [];
+      this.#writeState({
+        updatedAt,
+        polledAt,
+        ...(source !== null ? { source } : {}),
+        ...(ghUpdatedAt !== null ? { ghUpdatedAt } : {}),
+        ...(assistantUsageUpdatedAt !== null ? { assistantUsageUpdatedAt } : {}),
+        quotas,
+      });
+      return true;
+    }, false);
   }
 
   markPolled(polledAt = Date.now()) {
-    const previous = this.#readState();
-    const previousUpdatedAt = this.#asNumber(previous?.updatedAt);
-    const updatedAt = previousUpdatedAt !== null ? previousUpdatedAt : polledAt;
-    const quotas = Array.isArray(previous?.quotas) ? previous.quotas : [];
-    const source = typeof previous?.source === "string" ? previous.source : null;
-    const ghUpdatedAt = this.#asNumber(previous?.ghUpdatedAt);
-    const assistantUsageUpdatedAt = this.#asNumber(previous?.assistantUsageUpdatedAt);
-    this.#writeState({
-      updatedAt,
-      polledAt,
-      ...(source !== null ? { source } : {}),
-      ...(ghUpdatedAt !== null ? { ghUpdatedAt } : {}),
-      ...(assistantUsageUpdatedAt !== null ? { assistantUsageUpdatedAt } : {}),
-      quotas,
-    });
+    return this.#withLock(() => {
+      const previous = this.#readState();
+      const previousUpdatedAt = this.#asNumber(previous?.updatedAt);
+      const updatedAt = previousUpdatedAt !== null ? previousUpdatedAt : polledAt;
+      const quotas = Array.isArray(previous?.quotas) ? previous.quotas : [];
+      const source = typeof previous?.source === "string" ? previous.source : null;
+      const ghUpdatedAt = this.#asNumber(previous?.ghUpdatedAt);
+      const assistantUsageUpdatedAt = this.#asNumber(previous?.assistantUsageUpdatedAt);
+      this.#writeState({
+        updatedAt,
+        polledAt,
+        ...(source !== null ? { source } : {}),
+        ...(ghUpdatedAt !== null ? { ghUpdatedAt } : {}),
+        ...(assistantUsageUpdatedAt !== null ? { assistantUsageUpdatedAt } : {}),
+        quotas,
+      });
+      return true;
+    }, false);
   }
 
   #readState() {
@@ -133,6 +182,59 @@ export class CopilotQuotaWriter {
     mkdirSync(dirname(this.filePath), { recursive: true });
     writeFileSync(temporaryPath, `${JSON.stringify(state)}\n`, "utf8");
     renameSync(temporaryPath, this.filePath);
+  }
+
+  #withLock(operation, fallback) {
+    mkdirSync(dirname(this.filePath), { recursive: true });
+    const lock = this.#acquireLock();
+    if (lock === null) {
+      return fallback;
+    }
+
+    try {
+      return operation();
+    } finally {
+      closeSync(lock.file);
+      this.#releaseLock(lock.owner);
+    }
+  }
+
+  #acquireLock() {
+    const owner = `${process.pid}:${randomUUID()}`;
+    let file = null;
+    try {
+      file = openSync(this.lockPath, "wx");
+      writeFileSync(file, owner, "utf8");
+      return { file, owner };
+    } catch (error) {
+      if (file !== null) {
+        closeSync(file);
+        try {
+          unlinkSync(this.lockPath);
+        } catch (cleanupError) {
+          if (!(cleanupError instanceof Error && "code" in cleanupError && cleanupError.code === "ENOENT")) {
+            throw cleanupError;
+          }
+        }
+      }
+      if (error instanceof Error && "code" in error && error.code === "EEXIST") {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  #releaseLock(owner) {
+    try {
+      if (readFileSync(this.lockPath, "utf8") !== owner) {
+        return;
+      }
+      unlinkSync(this.lockPath);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+        throw error;
+      }
+    }
   }
 
   #mapQuota(id, snapshot) {

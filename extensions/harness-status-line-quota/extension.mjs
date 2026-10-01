@@ -40,6 +40,12 @@ async function refreshQuota() {
   try {
     const now = Date.now();
     const polledAt = now;
+    if (!writer.claimPoll(polledAt, REFRESH_INTERVAL_MS)) {
+      process.stderr.write(
+        `[harness-status-line-quota] poll skipped; another process owns the current interval\n`,
+      );
+      return;
+    }
     const preferredEntitlement = writer.getEntitlement("premium_interactions");
     const ghCandidate = await ghQuotaClient.fetchSnapshot(preferredEntitlement);
     if (ghCandidate !== null) {
@@ -56,9 +62,6 @@ async function refreshQuota() {
     const written = snapshots
       ? writer.write(snapshots, Date.now(), polledAt, "model-list")
       : false;
-    if (!written) {
-      writer.markPolled(polledAt);
-    }
     process.stderr.write(
       `[harness-status-line-quota] gh unavailable; model-list snapshots=${JSON.stringify(summarizeSnapshots(snapshots))}; write=${written}; previous quota preserved=${!written}; polledAt=${new Date(polledAt).toISOString()}\n`,
     );

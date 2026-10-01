@@ -11,11 +11,13 @@ export class GhCopilotQuotaClient {
 
   async fetchSnapshot(preferredEntitlement = null) {
     const accounts = await this.#listAccounts();
-    const candidates = (await Promise.all(accounts.map((account) => this.#fetchAccountQuota(account))))
-      .filter((candidate) => candidate !== null);
-    if (candidates.length !== accounts.length) {
+    const results = await Promise.all(accounts.map((account) => this.#fetchAccountQuota(account)));
+    if (results.some((result) => !result.resolved)) {
       return null;
     }
+    const candidates = results
+      .map((result) => result.candidate)
+      .filter((candidate) => candidate !== null);
     if (candidates.length === 1) {
       return candidates[0];
     }
@@ -57,7 +59,7 @@ export class GhCopilotQuotaClient {
     ]);
     const token = tokenResult.success ? tokenResult.stdout.trim() : "";
     if (!token) {
-      return null;
+      return { resolved: false, candidate: null };
     }
 
     const quotaResult = await this.runCommand(
@@ -65,7 +67,7 @@ export class GhCopilotQuotaClient {
       { GH_TOKEN: token, GH_HOST: "github.com" },
     );
     if (!quotaResult.success) {
-      return null;
+      return { resolved: false, candidate: null };
     }
 
     try {
@@ -76,28 +78,33 @@ export class GhCopilotQuotaClient {
       const remainingPercentage = this.#asNumber(premium?.percent_remaining);
       if (
         entitlement === null ||
-        entitlement <= 0 ||
         used === null ||
         remainingPercentage === null ||
         remainingPercentage < 0 ||
         remainingPercentage > 100
       ) {
-        return null;
+        return { resolved: false, candidate: null };
+      }
+      if (entitlement <= 0) {
+        return { resolved: true, candidate: null };
       }
 
       const resetDate = this.#normalizeResetDate(payload?.quota_reset_date);
       return {
-        login,
-        snapshot: {
-          isUnlimitedEntitlement: false,
-          entitlementRequests: entitlement,
-          usedRequests: used,
-          remainingPercentage,
-          ...(resetDate !== null ? { resetDate } : {}),
+        resolved: true,
+        candidate: {
+          login,
+          snapshot: {
+            isUnlimitedEntitlement: false,
+            entitlementRequests: entitlement,
+            usedRequests: used,
+            remainingPercentage,
+            ...(resetDate !== null ? { resetDate } : {}),
+          },
         },
       };
     } catch {
-      return null;
+      return { resolved: false, candidate: null };
     }
   }
 

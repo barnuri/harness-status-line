@@ -212,4 +212,32 @@ describe('CopilotQuotaWriter', () => {
     expect(state.assistantUsageUpdatedAt).toBe(3_000);
     expect(state.quotas[0].used).toBe(6_739);
   });
+
+  it('allows only one poll claim per refresh interval', () => {
+    const writer = new CopilotQuotaWriter(file);
+    expect(writer.claimPoll(1_000, 30_000)).toBe(true);
+    expect(writer.claimPoll(2_000, 30_000)).toBe(false);
+    expect(writer.claimPoll(31_000, 30_000)).toBe(true);
+  });
+
+  it('preserves the cache when another process holds the write lock', () => {
+    const writer = new CopilotQuotaWriter(file);
+    writer.write({
+      premium_interactions: {
+        entitlementRequests: 14_400,
+        usedRequests: 6_739,
+        remainingPercentage: 53.2,
+      },
+    }, 2_000, 1_500, 'gh');
+    fs.writeFileSync(`${file}.lock`, '', 'utf8');
+
+    expect(writer.write({
+      premium_interactions: {
+        entitlementRequests: 14_400,
+        usedRequests: 7_000,
+        remainingPercentage: 51,
+      },
+    }, 3_000, 2_500, 'assistant.usage')).toBe(false);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).quotas[0].used).toBe(6_739);
+  });
 });
