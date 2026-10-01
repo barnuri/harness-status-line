@@ -1,6 +1,16 @@
-import { joinSession } from "@github/copilot-sdk/extension";
-import { CopilotQuotaWriter } from "./quotaWriter.mjs";
+const isCopilotExtension = Boolean(
+  process.env.COPILOT_SDK_PATH &&
+    process.env.SESSION_ID &&
+    process.env.COPILOT_EXTENSION_PARENT_PID,
+);
 
+if (!isCopilotExtension) {
+  process.stderr.write("[harness-status-line-quota] skipped outside the Copilot CLI extension host\n");
+  process.exit(0);
+}
+
+const { joinSession } = await import("@github/copilot-sdk/extension");
+const { CopilotQuotaWriter } = await import("./quotaWriter.mjs");
 const session = await joinSession({ tools: [] });
 const writer = new CopilotQuotaWriter();
 const REFRESH_INTERVAL_MS = 30_000;
