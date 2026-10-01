@@ -127,6 +127,7 @@ describe('SetupWizard', () => {
 
     const extensionDir = path.join(path.dirname(copilotPath), 'extensions', 'harness-status-line-quota');
     expect(fs.readFileSync(path.join(extensionDir, 'extension.mjs'), 'utf-8')).toContain('assistant.usage');
+    expect(fs.existsSync(path.join(extensionDir, 'ghCopilotQuotaClient.mjs'))).toBe(true);
     expect(fs.existsSync(path.join(extensionDir, 'quotaWriter.mjs'))).toBe(true);
   });
 

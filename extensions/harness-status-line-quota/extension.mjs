@@ -11,8 +11,10 @@ if (!isCopilotExtension) {
 
 const { joinSession } = await import("@github/copilot-sdk/extension");
 const { CopilotQuotaWriter } = await import("./quotaWriter.mjs");
+const { GhCopilotQuotaClient } = await import("./ghCopilotQuotaClient.mjs");
 const session = await joinSession({ tools: [] });
 const writer = new CopilotQuotaWriter();
+const ghQuotaClient = new GhCopilotQuotaClient();
 const REFRESH_INTERVAL_MS = 30_000;
 let refreshInProgress = false;
 
@@ -46,6 +48,16 @@ async function refreshQuota() {
     }
 
     const polledAt = now;
+    const ghCandidate = ghQuotaClient.fetchSnapshot();
+    if (ghCandidate !== null) {
+      const snapshots = { premium_interactions: ghCandidate.snapshot };
+      const written = writer.write(snapshots, Date.now(), polledAt);
+      process.stderr.write(
+        `[harness-status-line-quota] gh account=${ghCandidate.login}; snapshots=${JSON.stringify(summarizeSnapshots(snapshots))}; write=${written}; polledAt=${new Date(polledAt).toISOString()}\n`,
+      );
+      return;
+    }
+
     const result = await session.rpc.model.list({ skipCache: true });
     const snapshots = result.quotaSnapshots;
     const written = snapshots ? writer.write(snapshots, Date.now(), polledAt) : false;
@@ -53,7 +65,7 @@ async function refreshQuota() {
       writer.markPolled(polledAt);
     }
     process.stderr.write(
-      `[harness-status-line-quota] poll snapshots=${JSON.stringify(summarizeSnapshots(snapshots))}; write=${written}; polledAt=${new Date(polledAt).toISOString()}\n`,
+      `[harness-status-line-quota] gh unavailable; model-list snapshots=${JSON.stringify(summarizeSnapshots(snapshots))}; write=${written}; previous quota preserved=${!written}; polledAt=${new Date(polledAt).toISOString()}\n`,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

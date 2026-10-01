@@ -8,7 +8,11 @@ export class SetupWizard {
   private static readonly COPILOT_HOME = process.env['COPILOT_HOME'] ?? path.join(os.homedir(), '.copilot');
   private static readonly DEFAULT_COPILOT_SETTINGS_PATH = path.join(SetupWizard.COPILOT_HOME, 'settings.json');
   private static readonly COPILOT_QUOTA_EXTENSION_NAME = 'harness-status-line-quota';
-  private static readonly COPILOT_QUOTA_EXTENSION_FILES = ['extension.mjs', 'quotaWriter.mjs'];
+  private static readonly COPILOT_QUOTA_EXTENSION_FILES = [
+    'extension.mjs',
+    'ghCopilotQuotaClient.mjs',
+    'quotaWriter.mjs',
+  ];
   private static readonly COPILOT_QUOTA_EXTENSION_SOURCE = path.join(
     import.meta.dir,
     '..',
