@@ -151,11 +151,11 @@ Note `refreshInterval` is in **seconds** here (Copilot CLI's own convention), un
 | model | `model.display_name` | Falls back to `model.id`. |
 | ctx | `context_window.current_context_used_percentage` | Shows the current fill percentage only. Values above 100 are interpreted as tenths of a percent (`813` → `81%`). Copilot's `current_context_tokens` is cumulative session usage, so it is not shown against the context limit. |
 | cost | `ai_used.total_nano_aiu` | AI credits converted to USD (1 credit = $0.01) and shown as `$X.XX session`, like Claude Code. Omitted when `ai_used` is absent. |
-| quota | Copilot CLI account quota RPC / `assistant.usage` event (cached) | Shows the most-used finite plan quota as `% used · reset in …`. |
+| quota | Copilot CLI `assistant.usage` event (cached) | Shows the most-used finite plan quota as `% used · reset in …`. |
 | lines | `cost.total_lines_added` / `total_lines_removed` | Off by default; when enabled, shown as `+12/-3` unless both are 0. |
 | yolo | `allow_all_enabled` | Shows `yolo: on` when Copilot CLI's allow-all mode is enabled. |
 
-Copilot CLI doesn't send `api`/`rate_limits` or plan quota in custom status-line stdin. `bun run src/index.ts --setup` installs a user-scoped extension that refreshes quota snapshots from Copilot's session model-list RPC every 30 seconds and also captures completed model-call snapshots. The cache lives at `~/.copilot/harness-status-line-quota.json`, and the status line rereads it every 2 seconds. Copilot's native `/statusline quota` can show its own quota item independently.
+Copilot CLI doesn't send `api`/`rate_limits` or plan quota in custom status-line stdin. `bun run src/index.ts --setup` installs a user-scoped extension that caches quota snapshots from `assistant.usage` events and attempts a model-list refresh every 30 seconds when the cache file has not changed recently. Copilot CLI may return no quota snapshots while idle; when it does, the last valid snapshot remains visible until a quota-bearing event updates the cache. The cache lives at `~/.copilot/harness-status-line-quota.json`, and the status line rereads it every 2 seconds. Copilot's native `/statusline quota` can show its own quota item independently.
 Hide the YOLO chip with `bun run src/index.ts config set segments.yolo false`. Enable the lines chip with `bun run src/index.ts config set segments.lines true`.
 
 ## Codex

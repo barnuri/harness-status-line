@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { joinSession } from "@github/copilot-sdk/extension";
 import { CopilotQuotaWriter } from "./quotaWriter.mjs";
 
@@ -6,35 +7,31 @@ const writer = new CopilotQuotaWriter();
 const REFRESH_INTERVAL_MS = 30_000;
 let refreshInProgress = false;
 
+function isQuotaCacheFresh() {
+  try {
+    return Date.now() - statSync(writer.filePath).mtimeMs < REFRESH_INTERVAL_MS;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
 async function refreshQuota() {
   if (refreshInProgress) {
-    process.stderr.write("[harness-status-line-quota] refresh skipped: already in progress\n");
     return;
   }
 
   refreshInProgress = true;
-  process.stderr.write("[harness-status-line-quota] refresh started\n");
   try {
+    if (isQuotaCacheFresh()) {
+      return;
+    }
+
     const result = await session.rpc.model.list({ skipCache: true });
     if (result.quotaSnapshots) {
-      const written = writer.write(result.quotaSnapshots);
-      const snapshotDetails = Object.fromEntries(
-        Object.entries(result.quotaSnapshots).map(([id, snapshot]) => [
-          id,
-          {
-            entitlementRequests: snapshot?.entitlementRequests,
-            usedRequests: snapshot?.usedRequests,
-            remainingPercentage: snapshot?.remainingPercentage,
-            resetDate: snapshot?.resetDate,
-            isUnlimitedEntitlement: snapshot?.isUnlimitedEntitlement,
-          },
-        ]),
-      );
-      process.stderr.write(
-        `[harness-status-line-quota] refresh snapshots=${JSON.stringify(snapshotDetails)}; cache write=${written}\n`,
-      );
-    } else {
-      process.stderr.write("[harness-status-line-quota] refresh returned no snapshots\n");
+      writer.write(result.quotaSnapshots);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
