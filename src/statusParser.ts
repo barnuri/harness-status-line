@@ -1,4 +1,4 @@
-import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance } from './types.ts';
+import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance, CopilotQuotaState, CopilotQuotaEntry } from './types.ts';
 import { formatTokenCount, formatTokenLimit, formatTokenPair } from './shared/tokenFormat.ts';
 import { resolveSessionSlug } from './shared/sessionSlug.ts';
 import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
@@ -155,6 +155,10 @@ export class StatusParser {
     }
 
     if (visibility.rateLimits) {
+      const copilotQuota = this.buildCopilotQuotaSegment(status.copilot_quota, colors);
+      if (copilotQuota) {
+        segments.push(copilotQuota);
+      }
       const credits = this.buildCreditsSegment(status, colors);
       if (credits) {
         segments.push(credits);
@@ -452,6 +456,41 @@ export class StatusParser {
       fg: colorConfig.fg,
       bg: colorConfig.bg,
     };
+  }
+
+  private buildCopilotQuotaSegment(quota: CopilotQuotaState | undefined, colors: SegmentColorMap): Segment | null {
+    const entry = quota?.quotas
+      .filter((item) => item.remainingPercentage >= 0 && item.remainingPercentage <= 100)
+      .sort((left, right) => left.remainingPercentage - right.remainingPercentage)[0];
+    if (!entry) {
+      return null;
+    }
+
+    const used = Math.round((StatusParser.CTX_PERCENT_MAX - entry.remainingPercentage) * 10) / 10;
+    const colorConfig = used > 80
+      ? colors.rateCritical
+      : used > 50
+        ? colors.rateWarning
+        : colors.rateHealthy;
+    const reset = entry.resetDate ? this.formatCopilotQuotaReset(entry) : null;
+    return {
+      icon: StatusParser.CREDITS_ICON,
+      label: 'quota',
+      value: `${used}% used${reset ? ` · reset ${reset}` : ''}`,
+      fg: colorConfig.fg,
+      bg: colorConfig.bg,
+    };
+  }
+
+  private formatCopilotQuotaReset(entry: CopilotQuotaEntry): string | null {
+    if (!entry.resetDate) {
+      return null;
+    }
+    const resetMs = Date.parse(entry.resetDate);
+    if (Number.isNaN(resetMs)) {
+      return null;
+    }
+    return `in ${this.formatResetTime(resetMs / 1000)}`;
   }
 
   private creditsLabel(credits: CreditBalance): string {

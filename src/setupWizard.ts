@@ -5,7 +5,16 @@ import * as os from 'os';
 export class SetupWizard {
   private static readonly GLOBAL_SETTINGS_DIR = path.join(os.homedir(), '.claude');
   private static readonly DEFAULT_CURSOR_CONFIG_PATH = path.join(os.homedir(), '.cursor', 'cli-config.json');
-  private static readonly DEFAULT_COPILOT_SETTINGS_PATH = path.join(os.homedir(), '.copilot', 'settings.json');
+  private static readonly COPILOT_HOME = process.env['COPILOT_HOME'] ?? path.join(os.homedir(), '.copilot');
+  private static readonly DEFAULT_COPILOT_SETTINGS_PATH = path.join(SetupWizard.COPILOT_HOME, 'settings.json');
+  private static readonly COPILOT_QUOTA_EXTENSION_NAME = 'harness-status-line-quota';
+  private static readonly COPILOT_QUOTA_EXTENSION_FILES = ['extension.mjs', 'quotaWriter.mjs'];
+  private static readonly COPILOT_QUOTA_EXTENSION_SOURCE = path.join(
+    import.meta.dir,
+    '..',
+    'extensions',
+    SetupWizard.COPILOT_QUOTA_EXTENSION_NAME,
+  );
   private static readonly COMMAND = 'bunx barnuri/harness-status-line';
   private static readonly STATUS_LINE_TYPE = 'command';
   private static readonly INTERVAL_MS = 2000;
@@ -43,6 +52,7 @@ export class SetupWizard {
     };
     this.writeJsonObject(this.cursorConfigPath, cursorConfig);
 
+    this.installCopilotQuotaExtension();
     const copilotSettings = this.loadJsonObject(this.copilotSettingsPath);
     copilotSettings.statusLine = {
       command: SetupWizard.COMMAND,
@@ -54,10 +64,26 @@ export class SetupWizard {
     console.log(`   Claude settings: ${claudeSettingsPath}`);
     console.log(`   Cursor config: ${this.cursorConfigPath}`);
     console.log(`   Copilot CLI settings: ${this.copilotSettingsPath}`);
+    console.log(`   Copilot quota extension: ${path.join(path.dirname(this.copilotSettingsPath), 'extensions', SetupWizard.COPILOT_QUOTA_EXTENSION_NAME)}`);
     console.log(`   Command: ${SetupWizard.COMMAND}`);
     console.log('\nRestart Claude Code, Cursor, or Copilot CLI to activate the status line.\n');
     console.log('Status line will show:');
     console.log('  📁 Current folder | 🤖 Model | 🧠 Effort | 📊 Context% | 🔢 Tokens | ⚙ Workflow | ⏱ Rate limits%\n');
+  }
+
+  private installCopilotQuotaExtension(): void {
+    const extensionPath = path.join(
+      path.dirname(this.copilotSettingsPath),
+      'extensions',
+      SetupWizard.COPILOT_QUOTA_EXTENSION_NAME,
+    );
+    fs.mkdirSync(extensionPath, { recursive: true });
+    for (const fileName of SetupWizard.COPILOT_QUOTA_EXTENSION_FILES) {
+      fs.copyFileSync(
+        path.join(SetupWizard.COPILOT_QUOTA_EXTENSION_SOURCE, fileName),
+        path.join(extensionPath, fileName),
+      );
+    }
   }
 
   private resolveSettingsPath(): string {

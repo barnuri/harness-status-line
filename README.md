@@ -151,10 +151,11 @@ Note `refreshInterval` is in **seconds** here (Copilot CLI's own convention), un
 | model | `model.display_name` | Falls back to `model.id`. |
 | ctx | `context_window.current_context_used_percentage` | Shows the current fill percentage only. Values above 100 are interpreted as tenths of a percent (`813` → `81%`). Copilot's `current_context_tokens` is cumulative session usage, so it is not shown against the context limit. |
 | cost | `ai_used.total_nano_aiu` | AI credits converted to USD (1 credit = $0.01) and shown as `$X.XX session`, like Claude Code. Omitted when `ai_used` is absent. |
+| quota | Copilot CLI account quota RPC / `assistant.usage` event (cached) | Shows the most-used finite plan quota as `% used · reset in …`. |
 | lines | `cost.total_lines_added` / `total_lines_removed` | Off by default; when enabled, shown as `+12/-3` unless both are 0. |
 | yolo | `allow_all_enabled` | Shows `yolo: on` when Copilot CLI's allow-all mode is enabled. |
 
-Copilot CLI doesn't send `api`/`rate_limits` or a remaining-credit balance, so auth and quota chips are omitted rather than showing a misleading default. The payload provides session premium-request usage, not the account's remaining allowance.
+Copilot CLI doesn't send `api`/`rate_limits` or plan quota in custom status-line stdin. `bun run src/index.ts --setup` installs a user-scoped extension that captures quota snapshots from completed model calls, caching them in `~/.copilot/harness-status-line-quota.json`. The status line rereads the cache on each 2-second run; Copilot only supplies a newer snapshot after a model call, so the quota cannot be proactively refreshed while idle. Copilot's native `/statusline quota` can show its own quota item independently.
 Hide the YOLO chip with `bun run src/index.ts config set segments.yolo false`. Enable the lines chip with `bun run src/index.ts config set segments.lines true`.
 
 ## Codex

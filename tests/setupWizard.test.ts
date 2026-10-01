@@ -122,6 +122,14 @@ describe('SetupWizard', () => {
     expect(statusLine.refreshInterval).toBe(2);
   });
 
+  it('installs the Copilot quota extension beside the user settings', async () => {
+    await runWizard();
+
+    const extensionDir = path.join(path.dirname(copilotPath), 'extensions', 'harness-status-line-quota');
+    expect(fs.readFileSync(path.join(extensionDir, 'extension.mjs'), 'utf-8')).toContain('assistant.usage');
+    expect(fs.existsSync(path.join(extensionDir, 'quotaWriter.mjs'))).toBe(true);
+  });
+
   it('preserves unrelated sibling keys in Copilot CLI settings', async () => {
     fs.mkdirSync(path.dirname(copilotPath), { recursive: true });
     fs.writeFileSync(

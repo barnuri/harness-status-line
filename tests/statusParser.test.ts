@@ -1345,6 +1345,33 @@ describe('buildSegments() — Copilot CLI payload', () => {
     expect(segs.find(s => s.label === 'cost')).toBeUndefined();
   });
 
+  it('shows used Copilot quota and its relative reset time', () => {
+    const resetDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000 + 1_000).toISOString();
+    const segs = parser.buildSegments(makeCopilotStatus({
+      copilot_quota: {
+        updatedAt: Date.now(),
+        quotas: [
+          { id: 'chat', remainingPercentage: 75 },
+          { id: 'premium_interactions', remainingPercentage: 1.625, resetDate },
+        ],
+      },
+    }), cfg);
+
+    expect(segs.find(s => s.label === 'quota')?.value).toBe('98.4% used · reset in 3d');
+  });
+
+  it('hides the Copilot quota when rate-limit segments are disabled', () => {
+    const config = makeConfig({ segments: { ...cfg.segments, rateLimits: false } });
+    const segs = parser.buildSegments(makeCopilotStatus({
+      copilot_quota: {
+        updatedAt: Date.now(),
+        quotas: [{ id: 'ai_credits', remainingPercentage: 10 }],
+      },
+    }), config);
+
+    expect(segs.find(s => s.label === 'quota')).toBeUndefined();
+  });
+
   it('shows AI credits as session dollars instead of premium requests (1 credit = $0.01)', () => {
     const segs = parser.buildSegments(makeCopilotStatus({
       cost: { total_premium_requests: 1 },

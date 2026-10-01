@@ -100,6 +100,19 @@ export interface CreditBalance {
   readonly resets_at?: number;
 }
 
+export interface CopilotQuotaEntry {
+  readonly id: string;
+  readonly used?: number;
+  readonly entitlement?: number;
+  readonly remainingPercentage: number;
+  readonly resetDate?: string;
+}
+
+export interface CopilotQuotaState {
+  readonly updatedAt: number;
+  readonly quotas: readonly CopilotQuotaEntry[];
+}
+
 export interface StatusJSON {
   readonly cwd?: string;
   readonly model?: string | ModelInfo;
@@ -124,6 +137,7 @@ export interface StatusJSON {
   readonly username?: string | null;
   readonly allow_all_enabled?: boolean;
   readonly ai_used?: { readonly total_nano_aiu?: number; readonly formatted?: string };
+  readonly copilot_quota?: CopilotQuotaState;
 }
 
 export interface SubagentTask {
