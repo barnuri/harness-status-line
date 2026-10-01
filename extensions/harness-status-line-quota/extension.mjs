@@ -8,14 +8,33 @@ let refreshInProgress = false;
 
 async function refreshQuota() {
   if (refreshInProgress) {
+    process.stderr.write("[harness-status-line-quota] refresh skipped: already in progress\n");
     return;
   }
 
   refreshInProgress = true;
+  process.stderr.write("[harness-status-line-quota] refresh started\n");
   try {
     const result = await session.rpc.model.list({ skipCache: true });
     if (result.quotaSnapshots) {
-      writer.write(result.quotaSnapshots);
+      const written = writer.write(result.quotaSnapshots);
+      const snapshotDetails = Object.fromEntries(
+        Object.entries(result.quotaSnapshots).map(([id, snapshot]) => [
+          id,
+          {
+            entitlementRequests: snapshot?.entitlementRequests,
+            usedRequests: snapshot?.usedRequests,
+            remainingPercentage: snapshot?.remainingPercentage,
+            resetDate: snapshot?.resetDate,
+            isUnlimitedEntitlement: snapshot?.isUnlimitedEntitlement,
+          },
+        ]),
+      );
+      process.stderr.write(
+        `[harness-status-line-quota] refresh snapshots=${JSON.stringify(snapshotDetails)}; cache write=${written}\n`,
+      );
+    } else {
+      process.stderr.write("[harness-status-line-quota] refresh returned no snapshots\n");
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
