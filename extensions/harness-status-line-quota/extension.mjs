@@ -39,19 +39,12 @@ async function refreshQuota() {
   refreshInProgress = true;
   try {
     const now = Date.now();
-    const lastPolledAt = writer.getPolledAt();
-    if (lastPolledAt !== null && now >= lastPolledAt && now - lastPolledAt < REFRESH_INTERVAL_MS) {
-      process.stderr.write(
-        `[harness-status-line-quota] poll skipped; polledAt=${new Date(lastPolledAt).toISOString()}\n`,
-      );
-      return;
-    }
-
     const polledAt = now;
-    const ghCandidate = ghQuotaClient.fetchSnapshot();
+    const preferredEntitlement = writer.getEntitlement("premium_interactions");
+    const ghCandidate = await ghQuotaClient.fetchSnapshot(preferredEntitlement);
     if (ghCandidate !== null) {
       const snapshots = { premium_interactions: ghCandidate.snapshot };
-      const written = writer.write(snapshots, Date.now(), polledAt);
+      const written = writer.write(snapshots, Date.now(), polledAt, "gh");
       process.stderr.write(
         `[harness-status-line-quota] gh account=${ghCandidate.login}; snapshots=${JSON.stringify(summarizeSnapshots(snapshots))}; write=${written}; polledAt=${new Date(polledAt).toISOString()}\n`,
       );
@@ -60,7 +53,9 @@ async function refreshQuota() {
 
     const result = await session.rpc.model.list({ skipCache: true });
     const snapshots = result.quotaSnapshots;
-    const written = snapshots ? writer.write(snapshots, Date.now(), polledAt) : false;
+    const written = snapshots
+      ? writer.write(snapshots, Date.now(), polledAt, "model-list")
+      : false;
     if (!written) {
       writer.markPolled(polledAt);
     }
@@ -84,9 +79,13 @@ session.on("assistant.usage", (event) => {
   const snapshots = event.data?.quotaSnapshots;
   if (snapshots) {
     try {
-      const written = writer.write(snapshots);
+      const updatedAt = Date.now();
+      const hasGitHubQuota = writer.getSource() === "gh";
+      const written = hasGitHubQuota
+        ? (writer.recordAssistantUsage(updatedAt), false)
+        : writer.write(snapshots, updatedAt, writer.getPolledAt(), "assistant.usage");
       process.stderr.write(
-        `[harness-status-line-quota] event snapshots=${JSON.stringify(summarizeSnapshots(snapshots))}; write=${written}; polledAt=${writer.getPolledAt() === null ? "missing" : new Date(writer.getPolledAt()).toISOString()}\n`,
+        `[harness-status-line-quota] event snapshots=${JSON.stringify(summarizeSnapshots(snapshots))}; write=${written}; github preferred=${hasGitHubQuota}; polledAt=${writer.getPolledAt() === null ? "missing" : new Date(writer.getPolledAt()).toISOString()}\n`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

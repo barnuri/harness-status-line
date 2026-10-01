@@ -67,6 +67,21 @@ describe('CopilotQuotaWriter', () => {
     ]);
   });
 
+  it('derives remaining percentage from usage when the provider percentage is rounded or stale', () => {
+    const writer = new CopilotQuotaWriter(file);
+    writer.write({
+      premium_interactions: {
+        entitlementRequests: 14_400,
+        usedRequests: 6_739,
+        remainingPercentage: 58,
+      },
+    }, 2_000, 1_500, 'gh');
+
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).quotas[0].remainingPercentage).toBeCloseTo(
+      53.2013888889,
+    );
+  });
+
   it('preserves the last valid quota when incoming snapshots contain no usable quota', () => {
     const writer = new CopilotQuotaWriter(file);
     writer.write({
@@ -104,15 +119,97 @@ describe('CopilotQuotaWriter', () => {
       },
     }, 4_000);
 
-    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({
+    const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(state).toMatchObject({
       updatedAt: 4_000,
       polledAt: 3_000,
       quotas: [{
         id: 'premium_interactions',
         used: 1_100,
         entitlement: 14_400,
-        remainingPercentage: 92.36,
       }],
     });
+    expect(state.quotas[0].remainingPercentage).toBeCloseTo(92.3611111111);
+  });
+
+  it('does not replace a newer quota with an older snapshot from the same reset cycle', () => {
+    const writer = new CopilotQuotaWriter(file);
+    const resetDate = '2026-11-01T00:00:00Z';
+    writer.write({
+      premium_interactions: {
+        entitlementRequests: 14_400,
+        usedRequests: 6_080,
+        remainingPercentage: 58,
+        resetDate,
+      },
+    }, 2_000, 1_500, 'gh');
+
+    writer.write({
+      premium_interactions: {
+        entitlementRequests: 14_400,
+        usedRequests: 5_299,
+        remainingPercentage: 63.2,
+        resetDate,
+      },
+    }, 3_000, 2_500, 'assistant.usage');
+
+    const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(state).toMatchObject({
+      updatedAt: 2_000,
+      polledAt: 2_500,
+      source: 'gh',
+      ghUpdatedAt: 2_000,
+      assistantUsageUpdatedAt: 3_000,
+      quotas: [{
+        id: 'premium_interactions',
+        used: 6_080,
+        entitlement: 14_400,
+        resetDate,
+      }],
+    });
+    expect(state.quotas[0].remainingPercentage).toBeCloseTo(57.7777777778);
+  });
+
+  it('always preserves GitHub quota when assistant usage reports a newer count', () => {
+    const writer = new CopilotQuotaWriter(file);
+    writer.write({
+      premium_interactions: {
+        entitlementRequests: 14_400,
+        usedRequests: 6_739,
+        remainingPercentage: 58,
+      },
+    }, 2_000, 1_500, 'gh');
+
+    writer.write({
+      premium_interactions: {
+        entitlementRequests: 14_400,
+        usedRequests: 7_000,
+        remainingPercentage: 51,
+      },
+    }, 3_000, 2_500, 'assistant.usage');
+
+    const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(state.source).toBe('gh');
+    expect(state.ghUpdatedAt).toBe(2_000);
+    expect(state.assistantUsageUpdatedAt).toBe(3_000);
+    expect(state.quotas[0].used).toBe(6_739);
+  });
+
+  it('records assistant usage time without replacing GitHub quota', () => {
+    const writer = new CopilotQuotaWriter(file);
+    writer.write({
+      premium_interactions: {
+        entitlementRequests: 14_400,
+        usedRequests: 6_739,
+        remainingPercentage: 53.2,
+      },
+    }, 2_000, 1_500, 'gh');
+
+    writer.recordAssistantUsage(3_000);
+
+    const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(writer.getSource()).toBe('gh');
+    expect(state.assistantUsageUpdatedAt).toBe(3_000);
+    expect(state.quotas[0].used).toBe(6_739);
   });
 });

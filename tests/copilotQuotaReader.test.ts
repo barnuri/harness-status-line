@@ -37,10 +37,18 @@ describe('CopilotQuotaReader', () => {
     write({
       updatedAt: 10_000,
       polledAt: 9_000,
+      source: 'gh',
+      ghUpdatedAt: 8_000,
+      assistantUsageUpdatedAt: 9_500,
       quotas: [{ id: 'ai_credits', remainingPercentage: 25 }],
     });
 
-    expect(new CopilotQuotaReader(file).read(12_000)?.polledAt).toBe(9_000);
+    expect(new CopilotQuotaReader(file).read(12_000)).toMatchObject({
+      polledAt: 9_000,
+      source: 'gh',
+      ghUpdatedAt: 8_000,
+      assistantUsageUpdatedAt: 9_500,
+    });
   });
 
   it('returns null for missing, malformed, or stale data', () => {

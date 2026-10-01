@@ -111,6 +111,9 @@ export interface CopilotQuotaEntry {
 export interface CopilotQuotaState {
   readonly updatedAt: number;
   readonly polledAt?: number;
+  readonly source?: string;
+  readonly ghUpdatedAt?: number;
+  readonly assistantUsageUpdatedAt?: number;
   readonly quotas: readonly CopilotQuotaEntry[];
 }
 

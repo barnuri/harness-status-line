@@ -57,8 +57,20 @@ export class CopilotQuotaReader {
         .map((quota): CopilotQuotaEntry | null => this.parseQuota(quota))
         .filter((quota): quota is CopilotQuotaEntry => quota !== null);
       const polledAt = this.isFiniteNumber(parsed['polledAt']) ? parsed['polledAt'] : undefined;
+      const source = typeof parsed['source'] === 'string' ? parsed['source'] : undefined;
+      const ghUpdatedAt = this.isFiniteNumber(parsed['ghUpdatedAt']) ? parsed['ghUpdatedAt'] : undefined;
+      const assistantUsageUpdatedAt = this.isFiniteNumber(parsed['assistantUsageUpdatedAt'])
+        ? parsed['assistantUsageUpdatedAt']
+        : undefined;
       return quotas.length > 0
-        ? { updatedAt: parsed['updatedAt'], ...(polledAt !== undefined ? { polledAt } : {}), quotas }
+        ? {
+            updatedAt: parsed['updatedAt'],
+            ...(polledAt !== undefined ? { polledAt } : {}),
+            ...(source !== undefined ? { source } : {}),
+            ...(ghUpdatedAt !== undefined ? { ghUpdatedAt } : {}),
+            ...(assistantUsageUpdatedAt !== undefined ? { assistantUsageUpdatedAt } : {}),
+            quotas,
+          }
         : null;
     } catch (error) {
       if (error instanceof Error) {
