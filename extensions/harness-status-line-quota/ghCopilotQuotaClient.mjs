@@ -13,6 +13,9 @@ export class GhCopilotQuotaClient {
     const accounts = await this.#listAccounts();
     const candidates = (await Promise.all(accounts.map((account) => this.#fetchAccountQuota(account))))
       .filter((candidate) => candidate !== null);
+    if (candidates.length !== accounts.length) {
+      return null;
+    }
     if (candidates.length === 1) {
       return candidates[0];
     }

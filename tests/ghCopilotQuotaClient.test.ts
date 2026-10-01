@@ -123,4 +123,44 @@ describe('GhCopilotQuotaClient', () => {
 
     expect(await client.fetchSnapshot()).toBeNull();
   });
+
+  it('preserves the previous value when any authenticated account lookup fails', async () => {
+    const client = new GhCopilotQuotaClient(
+      async (args: readonly string[], env: Readonly<Record<string, string>> = {}) => {
+        if (args[0] === 'auth' && args[1] === 'status') {
+          return {
+            success: true,
+            stdout: JSON.stringify({
+              hosts: {
+                'github.com': [
+                  { state: 'success', login: 'first' },
+                  { state: 'success', login: 'second' },
+                ],
+              },
+            }),
+          };
+        }
+        if (args[0] === 'auth' && args[1] === 'token') {
+          return { success: true, stdout: `${args.at(-1)}-token\n` };
+        }
+        if (env['GH_TOKEN'] === 'second-token') {
+          return { success: false, stdout: '' };
+        }
+        return {
+          success: true,
+          stdout: JSON.stringify({
+            quota_snapshots: {
+              premium_interactions: {
+                entitlement: 14_400,
+                credits_used: 7_766,
+                percent_remaining: 46,
+              },
+            },
+          }),
+        };
+      },
+    );
+
+    expect(await client.fetchSnapshot(14_400)).toBeNull();
+  });
 });
