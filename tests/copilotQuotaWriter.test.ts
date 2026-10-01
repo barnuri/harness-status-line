@@ -81,4 +81,38 @@ describe('CopilotQuotaWriter', () => {
     expect(writer.write({ invalid: { entitlementRequests: 0 } }, 3_000)).toBe(false);
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).updatedAt).toBe(2_000);
   });
+
+  it('records successful empty polls without losing the last quota or poll timestamp on events', () => {
+    const writer = new CopilotQuotaWriter(file);
+    expect(writer.getPolledAt()).toBeNull();
+    writer.write({
+      premium_interactions: {
+        entitlementRequests: 14_400,
+        usedRequests: 1_000,
+        remainingPercentage: 93,
+      },
+    }, 2_000);
+
+    writer.markPolled(3_000);
+    expect(writer.getPolledAt()).toBe(3_000);
+
+    writer.write({
+      premium_interactions: {
+        entitlementRequests: 14_400,
+        usedRequests: 1_100,
+        remainingPercentage: 92.36,
+      },
+    }, 4_000);
+
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({
+      updatedAt: 4_000,
+      polledAt: 3_000,
+      quotas: [{
+        id: 'premium_interactions',
+        used: 1_100,
+        entitlement: 14_400,
+        remainingPercentage: 92.36,
+      }],
+    });
+  });
 });

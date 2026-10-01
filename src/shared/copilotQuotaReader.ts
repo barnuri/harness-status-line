@@ -56,7 +56,10 @@ export class CopilotQuotaReader {
       const quotas = parsed['quotas']
         .map((quota): CopilotQuotaEntry | null => this.parseQuota(quota))
         .filter((quota): quota is CopilotQuotaEntry => quota !== null);
-      return quotas.length > 0 ? { updatedAt: parsed['updatedAt'], quotas } : null;
+      const polledAt = this.isFiniteNumber(parsed['polledAt']) ? parsed['polledAt'] : undefined;
+      return quotas.length > 0
+        ? { updatedAt: parsed['updatedAt'], ...(polledAt !== undefined ? { polledAt } : {}), quotas }
+        : null;
     } catch (error) {
       if (error instanceof Error) {
         return null;

@@ -110,6 +110,7 @@ export interface CopilotQuotaEntry {
 
 export interface CopilotQuotaState {
   readonly updatedAt: number;
+  readonly polledAt?: number;
   readonly quotas: readonly CopilotQuotaEntry[];
 }
 

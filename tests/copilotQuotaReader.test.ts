@@ -33,6 +33,16 @@ describe('CopilotQuotaReader', () => {
     });
   });
 
+  it('reads the last successful poll timestamp', () => {
+    write({
+      updatedAt: 10_000,
+      polledAt: 9_000,
+      quotas: [{ id: 'ai_credits', remainingPercentage: 25 }],
+    });
+
+    expect(new CopilotQuotaReader(file).read(12_000)?.polledAt).toBe(9_000);
+  });
+
   it('returns null for missing, malformed, or stale data', () => {
     expect(new CopilotQuotaReader(file).read(10_000)).toBeNull();
 

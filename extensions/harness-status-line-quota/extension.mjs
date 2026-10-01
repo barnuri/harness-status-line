@@ -1,4 +1,3 @@
-import { statSync } from "node:fs";
 import { joinSession } from "@github/copilot-sdk/extension";
 import { CopilotQuotaWriter } from "./quotaWriter.mjs";
 
@@ -7,15 +6,17 @@ const writer = new CopilotQuotaWriter();
 const REFRESH_INTERVAL_MS = 30_000;
 let refreshInProgress = false;
 
-function isQuotaCacheFresh() {
-  try {
-    return Date.now() - statSync(writer.filePath).mtimeMs < REFRESH_INTERVAL_MS;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
+function summarizeSnapshots(snapshots) {
+  return Object.fromEntries(
+    Object.entries(snapshots ?? {}).map(([id, snapshot]) => [
+      id,
+      {
+        usedRequests: snapshot?.usedRequests,
+        entitlementRequests: snapshot?.entitlementRequests,
+        remainingPercentage: snapshot?.remainingPercentage,
+      },
+    ]),
+  );
 }
 
 async function refreshQuota() {
@@ -25,14 +26,25 @@ async function refreshQuota() {
 
   refreshInProgress = true;
   try {
-    if (isQuotaCacheFresh()) {
+    const now = Date.now();
+    const lastPolledAt = writer.getPolledAt();
+    if (lastPolledAt !== null && now >= lastPolledAt && now - lastPolledAt < REFRESH_INTERVAL_MS) {
+      process.stderr.write(
+        `[harness-status-line-quota] poll skipped; polledAt=${new Date(lastPolledAt).toISOString()}\n`,
+      );
       return;
     }
 
+    const polledAt = now;
     const result = await session.rpc.model.list({ skipCache: true });
-    if (result.quotaSnapshots) {
-      writer.write(result.quotaSnapshots);
+    const snapshots = result.quotaSnapshots;
+    const written = snapshots ? writer.write(snapshots, Date.now(), polledAt) : false;
+    if (!written) {
+      writer.markPolled(polledAt);
     }
+    process.stderr.write(
+      `[harness-status-line-quota] poll snapshots=${JSON.stringify(summarizeSnapshots(snapshots))}; write=${written}; polledAt=${new Date(polledAt).toISOString()}\n`,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`[harness-status-line-quota] ${message}\n`);
@@ -50,7 +62,10 @@ session.on("assistant.usage", (event) => {
   const snapshots = event.data?.quotaSnapshots;
   if (snapshots) {
     try {
-      writer.write(snapshots);
+      const written = writer.write(snapshots);
+      process.stderr.write(
+        `[harness-status-line-quota] event snapshots=${JSON.stringify(summarizeSnapshots(snapshots))}; write=${written}; polledAt=${writer.getPolledAt() === null ? "missing" : new Date(writer.getPolledAt()).toISOString()}\n`,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       process.stderr.write(`[harness-status-line-quota] ${message}\n`);

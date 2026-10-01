@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 
@@ -12,7 +12,7 @@ export class CopilotQuotaWriter {
     this.filePath = filePath;
   }
 
-  write(snapshots, updatedAt = Date.now()) {
+  write(snapshots, updatedAt = Date.now(), polledAt = this.getPolledAt()) {
     if (!this.#isRecord(snapshots)) {
       return false;
     }
@@ -24,11 +24,44 @@ export class CopilotQuotaWriter {
       return false;
     }
 
+    this.#writeState({
+      updatedAt,
+      ...(polledAt !== null ? { polledAt } : {}),
+      quotas,
+    });
+    return true;
+  }
+
+  getPolledAt() {
+    const polledAt = this.#readState()?.polledAt;
+    return this.#asNumber(polledAt) !== null ? polledAt : null;
+  }
+
+  markPolled(polledAt = Date.now()) {
+    const previous = this.#readState();
+    const previousUpdatedAt = this.#asNumber(previous?.updatedAt);
+    const updatedAt = previousUpdatedAt !== null ? previousUpdatedAt : polledAt;
+    const quotas = Array.isArray(previous?.quotas) ? previous.quotas : [];
+    this.#writeState({ updatedAt, polledAt, quotas });
+  }
+
+  #readState() {
+    try {
+      const parsed = JSON.parse(readFileSync(this.filePath, "utf8"));
+      return this.#isRecord(parsed) ? parsed : null;
+    } catch (error) {
+      if (error instanceof SyntaxError || (error instanceof Error && "code" in error && error.code === "ENOENT")) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  #writeState(state) {
     const temporaryPath = `${this.filePath}.${process.pid}.tmp`;
     mkdirSync(dirname(this.filePath), { recursive: true });
-    writeFileSync(temporaryPath, `${JSON.stringify({ updatedAt, quotas })}\n`, "utf8");
+    writeFileSync(temporaryPath, `${JSON.stringify(state)}\n`, "utf8");
     renameSync(temporaryPath, this.filePath);
-    return true;
   }
 
   #mapQuota(id, snapshot) {
