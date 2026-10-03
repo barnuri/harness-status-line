@@ -46,6 +46,8 @@ export type IterationRecapEntry = {
 export type IterationRecapScope = {
   touchedDirectories: string[];
   changedDirectories: string[];
+  startRoot: string | null;
+  startState: string | null;
 };
 
 export type IterationRecapHandlers = {
@@ -55,16 +57,26 @@ export type IterationRecapHandlers = {
   onJump: (index: number) => void;
   onOpen: () => void;
   onHide: () => void;
+  onTogglePrompt: () => void;
+  onToggleHistory: () => void;
+};
+
+export type IterationRecapPaneLayout = {
+  isPromptOpen: boolean;
+  isHistoryOpen: boolean;
+  bodyRows: number;
 };
 
 declare module 'claude-code' {
   interface PluginState {
-    'iteration-recap': {
+    'summarize': {
       iterations: IterationRecapEntry[];
       cursor: number | null;
       isBandHidden: boolean;
       isPaneDismissed: boolean;
       isActive: boolean;
+      isPromptOpen: boolean;
+      isHistoryOpen: boolean;
     };
   }
 }

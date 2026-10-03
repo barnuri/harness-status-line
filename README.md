@@ -79,21 +79,22 @@ Claude Code pipes `StatusJSON` on each refresh. Rate-limit and auth segments com
 
 ## Claude features
 
-### Iteration recap mod
+### Summarize mod
 
-[`claude-mods/iteration-recap`](claude-mods/iteration-recap) is a Claude Code mod (a function-hooks plugin). It recaps every iteration (one prompt → one finished turn) and lets you jump between earlier recaps.
+[`claude-mods/summarize`](claude-mods/summarize) is a Claude Code mod (a function-hooks plugin). It recaps every iteration (one prompt → one finished turn) and lets you jump between earlier recaps.
 
-Each recap holds:
+Each recap holds the rows below. Summary, changed, skills, tools, repos and PRs always show (`none` when empty). The rest show only when they have content. Every row has its own color.
 
 | Row | Source |
 |---|---|
 | summary | One-line Haiku summary of the turn, with a first-sentence fallback |
-| prompt, tools | The turn's prompt and a count per tool |
+| changed | Repos written to: the session repo when its git state (`HEAD`, `status --porcelain`, `diff HEAD --numstat`) differs between turn start and end, so edits made through shell commands count; git roots of edited files and of `git commit` / `push` / `merge` / `rebase` / `cherry-pick` targets; the repo of each created PR |
 | skills | The typed slash command plus every `Skill` tool call |
+| tools | A count per tool |
+| repos | Changed repos plus every touched repo: `git rev-parse --show-toplevel` of touched folders, GitHub URLs, `gh --repo` flags |
+| PRs | `github.com/<owner>/<repo>/pull/<n>` links and `gh pr <action> <n>` commands. Links from `gh pr create` or an MCP `create_pull_request` tool are marked created (`+`) |
+| prompt | Collapsed by default. `▸ prompt` (hotkey `i`) expands it |
 | files | `Edit` / `Write` / `NotebookEdit` targets |
-| changed | Repos written to: git roots of edited files and of `git commit` / `push` / `merge` / `rebase` / `cherry-pick` targets, plus the repo of each created PR |
-| repos | `git rev-parse --show-toplevel` of touched folders, plus GitHub URLs and `gh --repo` flags |
-| PRs | `github.com/<owner>/<repo>/pull/<n>` links and `gh pr <action> <n>` commands. Links from `gh pr create` or an MCP `create_pull_request` tool are marked created |
 | reviews | `/cr`, `/code-review`, `/review`, `/security-review` skills, review agents, `ReportFindings`, `gh pr review` |
 | plans | `ExitPlanMode`, `/code-gen` / `/arch-design` skills, Plan agents, `TaskCreate`, `plan.md` / `tasks.md` writes |
 | commits | `git commit` output (`<hash> <subject>`) |
@@ -105,8 +106,8 @@ Recording runs from the start of the session, but nothing shows until you run `/
 
 It shows up in two places:
 
-- **Band above the prompt**: the latest recap in one line, with `recap` and `×` buttons.
-- **`/summarize` pane**: the full recap, `◀ prev` / `next ▶` / `latest` buttons (hotkeys `p` / `n` / `l` once the pane has focus) and a clickable history list. After `/summarize`, it reopens after each new iteration. Close it (`✕` or ctrl+x x) and it stays closed until you run `/summarize` again. When it reopens by itself, Claude Code places the pane only on terminals at least 144 columns wide. Narrower terminals hold it until you run `/summarize`.
+- **Band above the prompt**: the latest recap in one line (summary, `✎` changed repos, skills, PR count, open questions), with `summary` and `×` buttons.
+- **`/summarize` pane**: the full recap, `◀ prev` / `next ▶` / `latest` buttons (hotkeys `p` / `n` / `l` once the pane has focus) and a history list, collapsed by default, that `▸ history` (hotkey `h`) expands. After `/summarize`, it reopens after each new iteration. Close it (`✕` or ctrl+x x) and it stays closed until you run `/summarize` again. When it reopens by itself, Claude Code places the pane only on terminals at least 144 columns wide. Narrower terminals hold it until you run `/summarize`.
 
 | Command | Effect |
 |---|---|
@@ -118,14 +119,14 @@ It shows up in two places:
 Load it for one session:
 
 ```bash
-claude --plugin-dir ./claude-mods/iteration-recap
+claude --plugin-dir ./claude-mods/summarize
 ```
 
-To load it in every session, add the absolute path to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`. Options (`/config`, or `pluginConfigs.iteration-recap`): `summarizer` is `haiku` (default) or `heuristic` (no model call). `showBand` defaults to `true`.
+To load it in every session, add the absolute path to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`. Options (`/config`, or `pluginConfigs.summarize`): `summarizer` is `haiku` (default) or `heuristic` (no model call). `showBand` defaults to `true`.
 
 #### Demo
 
-Captured from a live Claude Code 2.1.287 session (tmux, scratch repo `demo-shop`) running two prompts. Full-width capture: [docs/iteration-recap-demo.txt](docs/iteration-recap-demo.txt).
+Captured from a live Claude Code 2.1.287 session (tmux, scratch repo `demo-shop`) running two prompts. Full-width capture: [docs/summarize-demo.txt](docs/summarize-demo.txt).
 
 Band after iteration 2 (Haiku summary, counts, open question):
 
@@ -133,7 +134,7 @@ Band after iteration 2 (Haiku summary, counts, open question):
 ↻ #2/2 5s · Created plan.md with 3 unit test steps and asked about test runner preference. · 1 file · 1 plan · 1 open ?   [ recap ][ × ]
 ```
 
-The capture below predates the rename, so it shows the old command name `/iterations`. It now runs as `/summarize`.
+The capture below predates three changes: the rename (it shows the old command name `/iterations`, which now runs as `/summarize`), the always-shown rows, and the collapsed prompt and history.
 
 `/iterations` opens the pane on the latest iteration:
 
@@ -162,7 +163,7 @@ The capture below predates the rename, so it shows the old command name `/iterat
 
 ```text
 ❯ /iterations prev
-  ⎿  iteration-recap: Iteration 1/2 · 17:41 · 20s
+  ⎿  summarize: Iteration 1/2 · 17:41 · 20s
      Added multiply function to math.js and committed with feat: multiply message.
      files    math.js
      repos    demo-shop
@@ -200,9 +201,9 @@ PR, review and plan-mode rows appear the same way when a turn produces them. The
 | `command.run` | Serves `/summarize` and switches the band and auto-reopening on for the rest of the session |
 
 ```bash
-claude plugin validate claude-mods/iteration-recap   # manifest + hooks scan
-claude plugin test claude-mods/iteration-recap       # engine-backed UI tests
-bun test tests/iterationRecap                        # extractor, recorder, summarizer, cursor
+claude plugin validate claude-mods/summarize   # manifest + hooks scan
+claude plugin test claude-mods/summarize       # engine-backed UI tests
+bun test tests/summarize                        # extractor, recorder, summarizer, cursor
 ```
 
 ## Cursor

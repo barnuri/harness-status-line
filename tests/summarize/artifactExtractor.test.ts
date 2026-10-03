@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { ArtifactExtractor } from '../../claude-mods/iteration-recap/hooks/artifactExtractor.ts';
-import type { IterationRecapToolCall } from '../../claude-mods/iteration-recap/types';
+import { ArtifactExtractor } from '../../claude-mods/summarize/hooks/artifactExtractor.ts';
+import type { IterationRecapToolCall } from '../../claude-mods/summarize/types';
 
 const call = (tool: string, input: Record<string, unknown>, resultText = '', isError = false): IterationRecapToolCall => ({
   tool,

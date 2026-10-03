@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { IterationRecorder } from '../../claude-mods/iteration-recap/hooks/iterationRecorder.ts';
+import { IterationRecorder } from '../../claude-mods/summarize/hooks/iterationRecorder.ts';
 
 const end = (turnId: string, answer: string) => ({ turnId, answer, durationMs: 4200, reason: 'answer', outputTokens: 900 });
 

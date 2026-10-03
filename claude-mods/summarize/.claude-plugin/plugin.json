@@ -1,5 +1,5 @@
 {
-  "name": "iteration-recap",
+  "name": "summarize",
   "version": "0.1.0",
   "description": "Summarizes every Claude Code iteration and lets you browse them: files, repos, PRs, reviews, plans, open questions",
   "author": {

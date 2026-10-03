@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { RecapCursor } from '../../claude-mods/iteration-recap/hooks/recapCursor.ts';
-import type { IterationRecapEntry } from '../../claude-mods/iteration-recap/types';
+import { RecapCursor } from '../../claude-mods/summarize/hooks/recapCursor.ts';
+import type { IterationRecapEntry } from '../../claude-mods/summarize/types';
 
 const entry = (index: number): IterationRecapEntry => ({
   index,

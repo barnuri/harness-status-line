@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { SessionTotals } from '../../claude-mods/iteration-recap/hooks/sessionTotals.ts';
-import type { IterationRecapEntry, IterationRecapLink } from '../../claude-mods/iteration-recap/types';
+import { SessionTotals } from '../../claude-mods/summarize/hooks/sessionTotals.ts';
+import type { IterationRecapEntry, IterationRecapLink } from '../../claude-mods/summarize/types';
 
 const entry = (index: number, changedRepos: string[], pullRequests: IterationRecapLink[]): IterationRecapEntry => ({
   index,

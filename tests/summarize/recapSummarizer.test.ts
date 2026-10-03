@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { RecapSummarizer } from '../../claude-mods/iteration-recap/hooks/recapSummarizer.ts';
-import type { IterationRecapEntry } from '../../claude-mods/iteration-recap/types';
+import { RecapSummarizer } from '../../claude-mods/summarize/hooks/recapSummarizer.ts';
+import type { IterationRecapEntry } from '../../claude-mods/summarize/types';
 
 const entry: IterationRecapEntry = {
   index: 1,

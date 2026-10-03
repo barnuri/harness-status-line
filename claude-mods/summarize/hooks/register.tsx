@@ -9,21 +9,25 @@ import { RecapView } from './recapView'
 
 import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapScope } from '../types'
 
-const PLUGIN = 'iteration-recap'
-const PANE = 'iteration-recap'
+const PLUGIN = 'summarize'
+const PANE = 'summarize'
 const COMMAND = 'summarize'
 const PANE_ROWS = 28
 const MAX_ITERATIONS = 200
 const MAX_REPO_LOOKUPS = 8
 const GIT_TIMEOUT_MS = 3000
 const ENRICH_DELAY_MS = 1
+const SESSION_DIRECTORY = '.'
+const GIT_STATE_COMMANDS = [['rev-parse', 'HEAD'], ['status', '--porcelain'], ['diff', 'HEAD', '--numstat']] as const
 const RESERVED_TOOL_KEYS = new Set(['tool', 'tool_use_id', 'agentId', 'consent'])
 
-const iterations = atom({ plugin: 'iteration-recap', key: 'iterations' } as const, [] as IterationRecapEntry[])
-const cursor = atom({ plugin: 'iteration-recap', key: 'cursor' } as const, null as number | null)
-const isBandHidden = atom({ plugin: 'iteration-recap', key: 'isBandHidden' } as const, false)
-const isPaneDismissed = atom({ plugin: 'iteration-recap', key: 'isPaneDismissed' } as const, false)
-const isActive = atom({ plugin: 'iteration-recap', key: 'isActive' } as const, false)
+const iterations = atom({ plugin: 'summarize', key: 'iterations' } as const, [] as IterationRecapEntry[])
+const cursor = atom({ plugin: 'summarize', key: 'cursor' } as const, null as number | null)
+const isBandHidden = atom({ plugin: 'summarize', key: 'isBandHidden' } as const, false)
+const isPaneDismissed = atom({ plugin: 'summarize', key: 'isPaneDismissed' } as const, false)
+const isActive = atom({ plugin: 'summarize', key: 'isActive' } as const, false)
+const isPromptOpen = atom({ plugin: 'summarize', key: 'isPromptOpen' } as const, false)
+const isHistoryOpen = atom({ plugin: 'summarize', key: 'isHistoryOpen' } as const, false)
 
 async function openPane($: EngineInterface): Promise<void> {
   await $.ui.open({ id: PANE, title: 'Summarize', rows: PANE_ROWS })
@@ -51,6 +55,8 @@ function handlersFor($: EngineInterface): IterationRecapHandlers {
     onJump: index => void moveCursor($, list => RecapCursor.jump(list, index)),
     onOpen: () => void openPane($),
     onHide: () => void update($, isBandHidden, () => true),
+    onTogglePrompt: () => void update($, isPromptOpen, isOpen => !isOpen),
+    onToggleHistory: () => void update($, isHistoryOpen, isOpen => !isOpen),
   }
 }
 
@@ -70,7 +76,7 @@ async function repoRoot($: EngineInterface, directory: string): Promise<string |
   }
 }
 
-async function localRepos($: EngineInterface, directories: readonly string[]): Promise<string[]> {
+async function repoRoots($: EngineInterface, directories: readonly string[]): Promise<string[]> {
   const roots = new Set<string>()
   for (const directory of directories.slice(0, MAX_REPO_LOOKUPS)) {
     const root = await repoRoot($, directory)
@@ -79,7 +85,43 @@ async function localRepos($: EngineInterface, directories: readonly string[]): P
     }
   }
 
-  return [...roots].map(root => root.split('/').at(-1) ?? root)
+  return [...roots]
+}
+
+async function gitOutput($: EngineInterface, root: string, args: readonly string[]): Promise<string> {
+  const { exitCode, stdout } = await $.process.run(['git', '-C', root, ...args], { timeoutMs: GIT_TIMEOUT_MS })
+
+  return exitCode === 0 ? stdout : ''
+}
+
+async function repoState($: EngineInterface, root: string): Promise<string | null> {
+  try {
+    const parts = await Promise.all(GIT_STATE_COMMANDS.map(args => gitOutput($, root, args)))
+
+    return parts.join('\n')
+  } catch (error) {
+    $.ui.log(`${PLUGIN}: git state failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
+
+    return null
+  }
+}
+
+async function sessionRepoSnapshot($: EngineInterface): Promise<{ root: string | null; state: string | null }> {
+  const root = await repoRoot($, SESSION_DIRECTORY)
+
+  return { root, state: root === null ? null : await repoState($, root) }
+}
+
+async function isRepoChangedSince($: EngineInterface, root: string | null, startState: string | null): Promise<boolean> {
+  if (root === null || startState === null) {
+    return false
+  }
+
+  return (await repoState($, root)) !== startState
+}
+
+function repoName(root: string): string {
+  return root.split('/').at(-1) ?? root
 }
 
 async function summarize($: EngineInterface, entry: IterationRecapEntry, answer: string): Promise<void> {
@@ -98,10 +140,12 @@ async function summarize($: EngineInterface, entry: IterationRecapEntry, answer:
 }
 
 async function enrich($: EngineInterface, entry: IterationRecapEntry, answer: string, scope: IterationRecapScope, isModelSummary: boolean): Promise<void> {
-  const local = await localRepos($, scope.touchedDirectories)
-  const localChanged = await localRepos($, scope.changedDirectories)
-  const repos = [...new Set([...local, ...entry.artifacts.repos])]
-  const changedRepos = [...new Set([...localChanged, ...ArtifactExtractor.createdPullRequestRepos(entry.artifacts)])]
+  const touchedRoots = await repoRoots($, scope.touchedDirectories)
+  const changedRoots = await repoRoots($, scope.changedDirectories)
+  const isSessionRepoChanged = await isRepoChangedSince($, scope.startRoot, scope.startState)
+  const allChangedRoots = isSessionRepoChanged && scope.startRoot !== null ? [scope.startRoot, ...changedRoots] : changedRoots
+  const repos = [...new Set([...[...allChangedRoots, ...touchedRoots].map(repoName), ...entry.artifacts.repos])]
+  const changedRepos = [...new Set([...allChangedRoots.map(repoName), ...ArtifactExtractor.createdPullRequestRepos(entry.artifacts)])]
   await patchEntry($, entry.index, { artifacts: { ...entry.artifacts, repos, changedRepos } })
 
   const hasWork = answer.trim() !== '' || Object.keys(entry.toolCounts).length > 0
@@ -121,6 +165,7 @@ async function enrichSafely($: EngineInterface, entry: IterationRecapEntry, answ
 
 export const register: Register = (on, options) => {
   const recorder = new IterationRecorder()
+  let turnStartRepo: { root: string | null; state: string | null } = { root: null, state: null }
   const isModelSummary = options.summarizer !== 'heuristic'
   const isBandEnabled = options.showBand !== false
 
@@ -137,6 +182,7 @@ export const register: Register = (on, options) => {
 
   on('turn.start', async ($, e, next) => {
     recorder.start(e.turnId, e.text, await $.clock.now())
+    turnStartRepo = await sessionRepoSnapshot($)
 
     return next(e)
   })
@@ -161,6 +207,8 @@ export const register: Register = (on, options) => {
     const scope: IterationRecapScope = {
       touchedDirectories: ArtifactExtractor.candidateDirectories(recorder.toolCalls),
       changedDirectories: ArtifactExtractor.changeDirectories(recorder.toolCalls),
+      startRoot: turnStartRepo.root,
+      startState: turnStartRepo.state,
     }
     const list = await read($, iterations)
     const index = (list.at(-1)?.index ?? 0) + 1
@@ -210,7 +258,13 @@ export const register: Register = (on, options) => {
     const list = await read($, iterations)
     const selected = RecapCursor.selected(list, await read($, cursor))
 
-    return RecapView.pane($.ui.resolve(e), list, selected, await $.session.cwd(), handlersFor($))
+    const layout = {
+      isPromptOpen: await read($, isPromptOpen),
+      isHistoryOpen: await read($, isHistoryOpen),
+      bodyRows: e.props.scroll.bodyRows,
+    }
+
+    return RecapView.pane($.ui.resolve(e), list, selected, await $.session.cwd(), layout, handlersFor($))
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
