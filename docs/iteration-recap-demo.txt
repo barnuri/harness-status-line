@@ -1,0 +1,53 @@
+# iteration-recap: live capture (Claude Code 2.1.287, tmux 150x60, scratch repo demo-shop)
+
+## Band after iteration 1
+↻ #1/1 20s · Added multiply function to math.js and committed with feat: multiply message. · 1 file · 1 commit                      [ recap ][ × ] [-]
+
+## Band after iteration 2
+↻ #2/2 5s · Created plan.md with 3 unit test steps and asked about test runner preference. · 1 file · 1 plan · 1 open ?             [ recap ][ × ] [-]
+
+## /iterations (iteration 2)
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Iteration 2/2  17:42 · 5s · 524 out · haiku                                                                                                      ✕ │
+│ Created plan.md with 3 unit test steps and asked about test runner preference.                                                                     │
+│                                                                                                                                                    │
+│ prompt   Write a short plan.md with 3 steps for adding unit tests to math.js. Do not implement it. End your reply by asking me which test runner I │
+│          prefer.                                                                                                                                   │
+│ tools    Write×1  AskUserQuestion×1                                                                                                                │
+│ files    plan.md                                                                                                                                   │
+│ repos    demo-shop                                                                                                                                 │
+│ plans    plan.md                                                                                                                                   │
+│ open ?   Which test runner do you prefer for the math.js unit tests?                                                                               │
+│                                                                                                                                                    │
+│ [ ◀ prev ][ next ▶ ][ latest ]                                                                                                                     │
+│                                                                                                                                                    │
+│ History (2)                                                                                                                                        │
+│ › #2 17:42 Created plan.md with 3 unit test steps and asked about test runner preference.                                                          │
+│   #1 17:41 Added multiply function to math.js and committed with feat: multiply message.                                                           │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+## /iterations prev (iteration 1)
+❯ /iterations prev
+  ⎿  iteration-recap: Iteration 1/2 · 17:41 · 20s
+     Added multiply function to math.js and committed with feat: multiply message.
+     files    math.js
+     repos    demo-shop
+     commits  33b9bbf feat: multiply
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Iteration 1/2  17:41 · 20s · 766 out · haiku                                                                                                     ✕ │
+│ Added multiply function to math.js and committed with feat: multiply message.                                                                      │
+│                                                                                                                                                    │
+│ prompt   Add a multiply(a, b) function to math.js, then commit it with git using the message 'feat: multiply'. At the end, ask me whether you      │
+│          should also add divide.                                                                                                                   │
+│ tools    Bash×2  Read×1  Edit×1  AskUserQuestion×1                                                                                                 │
+│ files    math.js                                                                                                                                   │
+│ repos    demo-shop                                                                                                                                 │
+│ commits  33b9bbf feat: multiply                                                                                                                    │
+│ asked    ✓ Should I also add a divide(a, b) function to math.js?                                                                                   │
+│                                                                                                                                                    │
+│ [ ◀ prev ][ next ▶ ][ latest ]                                                                                                                     │
+│                                                                                                                                                    │
+│ History (2)                                                                                                                                        │
+│   #2 17:42 Created plan.md with 3 unit test steps and asked about test runner preference.                                                          │
+│ › #1 17:41 Added multiply function to math.js and committed with feat: multiply message.                                                           │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

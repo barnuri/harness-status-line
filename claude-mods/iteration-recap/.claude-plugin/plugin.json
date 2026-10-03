@@ -1,0 +1,33 @@
+{
+  "name": "iteration-recap",
+  "version": "0.1.0",
+  "description": "Summarizes every Claude Code iteration and lets you browse them: files, repos, PRs, reviews, plans, open questions",
+  "author": {
+    "name": "barnuri"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "summarizer": {
+      "type": "string",
+      "title": "Recap summarizer",
+      "description": "haiku: one-line AI summary per iteration; heuristic: first sentence of the answer, no model call",
+      "options": [
+        "haiku",
+        "heuristic"
+      ],
+      "default": "haiku"
+    },
+    "showBand": {
+      "type": "boolean",
+      "title": "Show recap band",
+      "description": "Show the latest iteration recap in a one-line band above the prompt",
+      "default": true
+    },
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Auto-open recap pane",
+      "description": "Open the recap pane after each iteration until you close it; /iterations reopens it",
+      "default": true
+    }
+  }
+}

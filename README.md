@@ -77,6 +77,126 @@ Add this to `~/.claude/settings.json` (or project `.claude/settings.json`):
 
 Claude Code pipes `StatusJSON` on each refresh. Rate-limit and auth segments come from that payload (and `ANTHROPIC_*` env).
 
+## Claude features
+
+### Iteration recap mod
+
+[`claude-mods/iteration-recap`](claude-mods/iteration-recap) is a Claude Code mod (a function-hooks plugin). It recaps every iteration (one prompt → one finished turn) and lets you jump between earlier recaps.
+
+Each recap holds:
+
+| Row | Source |
+|---|---|
+| summary | One-line Haiku summary of the turn, with a first-sentence fallback |
+| prompt, tools | The turn's prompt and a count per tool |
+| files | `Edit` / `Write` / `NotebookEdit` targets |
+| repos | `git rev-parse --show-toplevel` of touched folders, plus GitHub URLs and `gh --repo` flags |
+| PRs | `github.com/<owner>/<repo>/pull/<n>` links and `gh pr <action> <n>` commands |
+| reviews | `/cr`, `/code-review`, `/review`, `/security-review` skills, review agents, `ReportFindings`, `gh pr review` |
+| plans | `ExitPlanMode`, `/code-gen` / `/arch-design` skills, Plan agents, `TaskCreate`, `plan.md` / `tasks.md` writes |
+| commits | `git commit` output (`<hash> <subject>`) |
+| asked / open ? | `AskUserQuestion` answered or declined, and trailing `?` lines of the final answer |
+
+It shows up in two places:
+
+- **Band above the prompt**: the latest recap in one line, with `recap` and `×` buttons.
+- **`/iterations` pane**: the full recap, `◀ prev` / `next ▶` / `latest` buttons (hotkeys `p` / `n` / `l` once the pane has focus) and a clickable history list. It opens by itself after each finished iteration. Close it (`✕` or ctrl+x x) and it stays closed until you run `/iterations`. Opened without being asked, Claude Code seats the pane from 144 terminal columns. Narrower terminals hold it until you run `/iterations`.
+
+| Command | Effect |
+|---|---|
+| `/iterations` | Open the pane on the selected iteration (latest by default) |
+| `/iterations prev` · `next` · `last` | Step backward, step forward, or follow the latest |
+| `/iterations <n>` | Jump to iteration `n` |
+| `/iterations band` | Toggle the band |
+
+Load it for one session:
+
+```bash
+claude --plugin-dir ./claude-mods/iteration-recap
+```
+
+To load it in every session, add the absolute path to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`. Options (`/config`, or `pluginConfigs.iteration-recap`): `summarizer` is `haiku` (default) or `heuristic` (no model call). `showBand` and `autoOpen` default to `true`.
+
+#### Demo
+
+Captured from a live Claude Code 2.1.287 session (tmux, scratch repo `demo-shop`) running two prompts. Full-width capture: [docs/iteration-recap-demo.txt](docs/iteration-recap-demo.txt).
+
+Band after iteration 2 (Haiku summary, counts, open question):
+
+```text
+↻ #2/2 5s · Created plan.md with 3 unit test steps and asked about test runner preference. · 1 file · 1 plan · 1 open ?   [ recap ][ × ]
+```
+
+`/iterations` opens the pane on the latest iteration:
+
+```text
+╭──────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Iteration 2/2  17:42 · 5s · 524 out · haiku                                                ✕ │
+│ Created plan.md with 3 unit test steps and asked about test runner preference.               │
+│                                                                                              │
+│ prompt   Write a short plan.md with 3 steps for adding unit tests to math.js. Do not         │
+│          implement it. End your reply by asking me which test runner I prefer.               │
+│ tools    Write×1  AskUserQuestion×1                                                          │
+│ files    plan.md                                                                             │
+│ repos    demo-shop                                                                           │
+│ plans    plan.md                                                                             │
+│ open ?   Which test runner do you prefer for the math.js unit tests?                         │
+│                                                                                              │
+│ [ ◀ prev ][ next ▶ ][ latest ]                                                               │
+│                                                                                              │
+│ History (2)                                                                                  │
+│ › #2 17:42 Created plan.md with 3 unit test steps and asked about test runner preference.    │
+│   #1 17:41 Added multiply function to math.js and committed with feat: multiply message.     │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+`/iterations prev` (or `◀ prev`, or clicking `#1` in the history) jumps back to iteration 1:
+
+```text
+❯ /iterations prev
+  ⎿  iteration-recap: Iteration 1/2 · 17:41 · 20s
+     Added multiply function to math.js and committed with feat: multiply message.
+     files    math.js
+     repos    demo-shop
+     commits  33b9bbf feat: multiply
+╭──────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Iteration 1/2  17:41 · 20s · 766 out · haiku                                               ✕ │
+│ Added multiply function to math.js and committed with feat: multiply message.                │
+│                                                                                              │
+│ prompt   Add a multiply(a, b) function to math.js, then commit it with git using the         │
+│          message 'feat: multiply'. At the end, ask me whether you should also add divide.    │
+│ tools    Bash×2  Read×1  Edit×1  AskUserQuestion×1                                           │
+│ files    math.js                                                                             │
+│ repos    demo-shop                                                                           │
+│ commits  33b9bbf feat: multiply                                                              │
+│ asked    ✓ Should I also add a divide(a, b) function to math.js?                             │
+│                                                                                              │
+│ [ ◀ prev ][ next ▶ ][ latest ]                                                               │
+│                                                                                              │
+│ History (2)                                                                                  │
+│   #2 17:42 Created plan.md with 3 unit test steps and asked about test runner preference.    │
+│ › #1 17:41 Added multiply function to math.js and committed with feat: multiply message.     │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+PR, review and plan-mode rows appear the same way when a turn produces them. The plugin tests cover the PR row (`acme/web#42`).
+
+#### How it works
+
+| Event | What the mod does |
+|---|---|
+| `turn.start` | Starts a draft with the prompt and start time |
+| `tool.call` | Records each main-loop tool call with its input and result text (subagent calls skipped) |
+| `turn.complete` | Builds the recap, stores it in `$.state` (kept across hot reloads, capped at 200), then enriches it in the background: local git roots and the Haiku summary (8 s timeout, low effort) |
+| `ui.render` | Draws the `Pane` and the `AbovePrompt` band |
+| `command.run` | Serves `/iterations` (`/recap` is a built-in command, so the engine refuses that name) |
+
+```bash
+claude plugin validate claude-mods/iteration-recap   # manifest + hooks scan
+claude plugin test claude-mods/iteration-recap       # engine-backed UI tests
+bun test tests/iterationRecap                        # extractor, recorder, summarizer, cursor
+```
+
 ## Cursor
 
 Cursor CLI is the same stdin contract: it spawns `statusLine.command` on each refresh, pipes JSON, and displays ANSI stdout (multi-line wrapping is supported). `--setup` writes this file automatically.
