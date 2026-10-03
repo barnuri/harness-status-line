@@ -15,7 +15,9 @@ const entry: IterationRecapEntry = {
   endReason: 'answer',
   artifacts: {
     files: ['/r/a.ts'],
+    skills: [],
     repos: [],
+    changedRepos: [],
     pullRequests: [{ label: 'acme/web#4', url: 'https://github.com/acme/web/pull/4' }],
     reviews: [],
     plans: [],

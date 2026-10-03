@@ -13,7 +13,7 @@ const entry = (index: number): IterationRecapEntry => ({
   outputTokens: 0,
   toolCounts: {},
   endReason: 'answer',
-  artifacts: { files: [], repos: [], pullRequests: [], reviews: [], plans: [], commits: [], questions: [] },
+  artifacts: { files: [], skills: [], repos: [], changedRepos: [], pullRequests: [], reviews: [], plans: [], commits: [], questions: [] },
 });
 
 const list = [entry(3), entry(4), entry(5)];

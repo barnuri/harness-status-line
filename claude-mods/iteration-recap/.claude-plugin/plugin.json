@@ -20,13 +20,7 @@
     "showBand": {
       "type": "boolean",
       "title": "Show recap band",
-      "description": "Show the latest iteration recap in a one-line band above the prompt",
-      "default": true
-    },
-    "autoOpen": {
-      "type": "boolean",
-      "title": "Auto-open recap pane",
-      "description": "Open the recap pane after each iteration until you close it; /iterations reopens it",
+      "description": "After /summarize, show the latest summary in a one-line band above the prompt",
       "default": true
     }
   }

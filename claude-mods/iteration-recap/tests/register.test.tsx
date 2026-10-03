@@ -27,6 +27,8 @@ const BAND = {
   },
 } as const
 
+const SUMMARIZE = { command: 'summarize', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } } as const
+
 function engineStubs(on: On, onOpen: (id: string) => void = () => undefined): void {
   on('turn.start', async ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', async ($, e) => ({ text: e.answer }))
@@ -64,6 +66,7 @@ async function runIteration($: Engine, turnId: string, prompt: string, answer: s
   await $.turn.start({ text: prompt, turnId })
   await $.tool.call({ tool: 'Edit', file_path: '/work/web/src/login.ts', old_string: 'a', new_string: 'b' })
   await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })
+  await $.tool.call({ tool: 'Skill', skill: 'cr' })
   await $.turn.complete({ answer, durationMs: 72_000, isAborted: false, turnId, reason: 'answer' })
 }
 
@@ -82,6 +85,10 @@ test('records an iteration with its artifacts and an AI summary', async ($, on) 
     expect((await ui.find({ type: 'Text', text: 'src/login.ts' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: /web, acme\/web/ }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'Want me to merge it?' }))).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: 'This session' }))).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: 'web, acme/web' }))).toBeDefined()
+    expect((await ui.findAll({ type: 'Link' })).map(link => link.props.href)).toContain('https://github.com/acme/web/pull/42')
+    expect((await ui.find({ type: 'Text', text: '/cr' }))).toBeDefined()
     await ui.unmount()
   }
 })
@@ -110,7 +117,7 @@ test('browses between iterations with prev, next and latest', { options: { summa
   await ui.unmount()
 })
 
-test('/iterations jumps by number and answers with a text recap', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+test('/summarize jumps by number and answers with a text recap', { options: { summarizer: 'heuristic' } }, async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
 
@@ -118,7 +125,7 @@ test('/iterations jumps by number and answers with a text recap', { options: { s
   await runIteration($, 't2', 'second task', 'Second done.')
   await clock.advance(10)
 
-  const answer = await $.command.run({ command: 'iterations', args: '1', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } })
+  const answer = await $.command.run({ command: 'summarize', args: '1', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } })
   expect(answer.text).toContain('Iteration 1/2')
   expect(answer.text).toContain('First done.')
   expect(answer.text).toContain('https://github.com/acme/web/pull/42')
@@ -130,6 +137,7 @@ test('band shows the latest recap and hides on press', { options: { summarizer: 
 
   await runIteration($, 't1', 'task', 'All done. Should I deploy to staging?')
   await clock.advance(10)
+  await $.command.run(SUMMARIZE)
 
   const ui = await $.ui.mount({ plugin: 'iteration-recap', surface: 'terminal', ...BAND })
   expect(await ui.find({ type: 'Text', text: /1 open \?/ })).toBeDefined()
@@ -140,23 +148,20 @@ test('band shows the latest recap and hides on press', { options: { summarizer: 
   await ui.unmount()
 })
 
-test('auto-opens the pane after each finished iteration', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+test('stays hidden until /summarize, then opens after every new iteration', { options: { summarizer: 'heuristic' } }, async ($, on) => {
   mock.clock(on, { now: 1_000 })
   const opened: string[] = []
   engineStubs(on, id => opened.push(id))
 
   await runIteration($, 't1', 'first task', 'First done.')
-  await runIteration($, 't2', 'second task', 'Second done.')
-
-  expect(opened).toEqual(['iteration-recap', 'iteration-recap'])
-})
-
-test('does not auto-open when autoOpen is off', { options: { summarizer: 'heuristic', autoOpen: false } }, async ($, on) => {
-  mock.clock(on, { now: 1_000 })
-  const opened: string[] = []
-  engineStubs(on, id => opened.push(id))
-
-  await runIteration($, 't1', 'first task', 'First done.')
-
   expect(opened).toEqual([])
+  const band = await $.ui.mount({ plugin: 'iteration-recap', surface: 'terminal', ...BAND })
+  expect(await band.find({ type: 'Text', text: /First done/ })).toBeUndefined()
+  await band.unmount()
+
+  await $.command.run(SUMMARIZE)
+  expect(opened).toEqual(['iteration-recap'])
+
+  await runIteration($, 't2', 'second task', 'Second done.')
+  expect(opened).toEqual(['iteration-recap', 'iteration-recap'])
 })

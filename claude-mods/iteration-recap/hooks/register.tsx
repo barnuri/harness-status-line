@@ -7,11 +7,11 @@ import { RecapCursor } from './recapCursor'
 import { RecapSummarizer } from './recapSummarizer'
 import { RecapView } from './recapView'
 
-import type { IterationRecapEntry, IterationRecapHandlers } from '../types'
+import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapScope } from '../types'
 
 const PLUGIN = 'iteration-recap'
 const PANE = 'iteration-recap'
-const COMMAND = 'iterations'
+const COMMAND = 'summarize'
 const PANE_ROWS = 28
 const MAX_ITERATIONS = 200
 const MAX_REPO_LOOKUPS = 8
@@ -23,14 +23,16 @@ const iterations = atom({ plugin: 'iteration-recap', key: 'iterations' } as cons
 const cursor = atom({ plugin: 'iteration-recap', key: 'cursor' } as const, null as number | null)
 const isBandHidden = atom({ plugin: 'iteration-recap', key: 'isBandHidden' } as const, false)
 const isPaneDismissed = atom({ plugin: 'iteration-recap', key: 'isPaneDismissed' } as const, false)
+const isActive = atom({ plugin: 'iteration-recap', key: 'isActive' } as const, false)
 
 async function openPane($: EngineInterface): Promise<void> {
-  await $.ui.open({ id: PANE, title: 'Iteration recap', rows: PANE_ROWS })
+  await $.ui.open({ id: PANE, title: 'Summarize', rows: PANE_ROWS })
 }
 
 async function autoOpenPane($: EngineInterface): Promise<void> {
   const list = await read($, iterations)
-  if (list.length === 0 || (await read($, isPaneDismissed))) {
+  const isShown = (await read($, isActive)) && !(await read($, isPaneDismissed))
+  if (list.length === 0 || !isShown) {
     return
   }
   await openPane($)
@@ -95,10 +97,12 @@ async function summarize($: EngineInterface, entry: IterationRecapEntry, answer:
   }
 }
 
-async function enrich($: EngineInterface, entry: IterationRecapEntry, answer: string, directories: readonly string[], isModelSummary: boolean): Promise<void> {
-  const local = await localRepos($, directories)
+async function enrich($: EngineInterface, entry: IterationRecapEntry, answer: string, scope: IterationRecapScope, isModelSummary: boolean): Promise<void> {
+  const local = await localRepos($, scope.touchedDirectories)
+  const localChanged = await localRepos($, scope.changedDirectories)
   const repos = [...new Set([...local, ...entry.artifacts.repos])]
-  await patchEntry($, entry.index, { artifacts: { ...entry.artifacts, repos } })
+  const changedRepos = [...new Set([...localChanged, ...ArtifactExtractor.createdPullRequestRepos(entry.artifacts)])]
+  await patchEntry($, entry.index, { artifacts: { ...entry.artifacts, repos, changedRepos } })
 
   const hasWork = answer.trim() !== '' || Object.keys(entry.toolCounts).length > 0
   const shouldSummarize = isModelSummary && entry.endReason !== 'aborted' && hasWork
@@ -107,9 +111,9 @@ async function enrich($: EngineInterface, entry: IterationRecapEntry, answer: st
   }
 }
 
-async function enrichSafely($: EngineInterface, entry: IterationRecapEntry, answer: string, directories: readonly string[], isModelSummary: boolean): Promise<void> {
+async function enrichSafely($: EngineInterface, entry: IterationRecapEntry, answer: string, scope: IterationRecapScope, isModelSummary: boolean): Promise<void> {
   try {
-    await enrich($, entry, answer, directories, isModelSummary)
+    await enrich($, entry, answer, scope, isModelSummary)
   } catch (error) {
     $.ui.log(`${PLUGIN}: recap enrichment failed for iteration ${entry.index}: ${error instanceof Error ? error.message : String(error)}`)
   }
@@ -119,17 +123,14 @@ export const register: Register = (on, options) => {
   const recorder = new IterationRecorder()
   const isModelSummary = options.summarizer !== 'heuristic'
   const isBandEnabled = options.showBand !== false
-  const isAutoOpen = options.autoOpen !== false
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
-      description: 'Recap the last iteration; browse earlier ones (prev, next, last, <n>, band)',
+      description: 'Summarize the last iteration and keep summarizing new ones; browse earlier ones (prev, next, last, <n>, band)',
       argumentHint: '[prev|next|last|<n>|band]',
     })
-    if (isAutoOpen) {
-      await autoOpenPane($)
-    }
+    await autoOpenPane($)
 
     return next(e)
   })
@@ -157,7 +158,10 @@ export const register: Register = (on, options) => {
     if (e.agentId !== undefined) {
       return done
     }
-    const directories = ArtifactExtractor.candidateDirectories(recorder.toolCalls)
+    const scope: IterationRecapScope = {
+      touchedDirectories: ArtifactExtractor.candidateDirectories(recorder.toolCalls),
+      changedDirectories: ArtifactExtractor.changeDirectories(recorder.toolCalls),
+    }
     const list = await read($, iterations)
     const index = (list.at(-1)?.index ?? 0) + 1
     const entry = recorder.finish(
@@ -169,16 +173,15 @@ export const register: Register = (on, options) => {
       return done
     }
     await update($, iterations, current => [...current, entry].slice(-MAX_ITERATIONS))
-    if (isAutoOpen) {
-      await autoOpenPane($)
-    }
-    $.clock.after(ENRICH_DELAY_MS, () => void enrichSafely($, entry, e.answer, directories, isModelSummary))
+    await autoOpenPane($)
+    $.clock.after(ENRICH_DELAY_MS, () => void enrichSafely($, entry, e.answer, scope, isModelSummary))
 
     return done
   })
 
   on('command.run', { command: COMMAND }, async ($, e) => {
     const word = e.args.trim().toLowerCase()
+    await update($, isActive, () => true)
     if (word === 'band') {
       const isHidden = await read($, isBandHidden)
       await update($, isBandHidden, () => !isHidden)
@@ -192,7 +195,7 @@ export const register: Register = (on, options) => {
     await update($, isPaneDismissed, () => false)
     await openPane($)
 
-    return { text: RecapView.commandText(RecapCursor.selected(list, target), list.length, await $.session.cwd()) }
+    return { text: RecapView.commandText(RecapCursor.selected(list, target), list, await $.session.cwd()) }
   })
 
   on('ui.close', async ($, e, next) => {
@@ -211,7 +214,8 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (!isBandEnabled || e.props.hasSurvey || (await read($, isBandHidden))) {
+    const isQuiet = !isBandEnabled || e.props.hasSurvey || !(await read($, isActive)) || (await read($, isBandHidden))
+    if (isQuiet) {
       return next(e)
     }
     const list = await read($, iterations)

@@ -17,6 +17,12 @@ export class ArtifactExtractor {
   private static readonly NON_REPO_OWNERS = new Set(['repos', 'orgs', 'users', 'settings', 'apps', 'marketplace', 'login', 'features'])
   private static readonly GH_REPO_FLAG = /\bgh\b[^\n]*?(?:--repo|-R)[ =]([\w.-]+\/[\w.-]+)/g
   private static readonly GH_PR_COMMAND = /\bgh pr (create|merge|review|view|checkout|comment|edit|close|ready)\b(?:\s+(\d+))?/g
+  private static readonly GH_PR_CREATE = /\bgh pr create\b/
+  private static readonly PR_CREATE_TOOL = /create_pull_request/i
+  private static readonly GIT_WRITE = /\bgit\s+(?:-C\s+\S+\s+)?(?:commit|push|merge|rebase|cherry-pick)\b/
+  private static readonly SLASH_COMMAND = /^\/([\w:.-]+)/
+  private static readonly COMMAND_NAME_TAG = /<command-name>\/?([\w:.-]+)<\/command-name>/
+  private static readonly SESSION_CWD = '.'
   private static readonly GH_PR_REVIEW = /\bgh pr review\b[^\n;&|]*/g
   private static readonly GIT_COMMIT = /\bgit commit\b/
   private static readonly GIT_COMMIT_OUTPUT = /^\[([^\]\s]+)(?: \(root-commit\))? ([0-9a-f]{7,40})\] (.+)$/m
@@ -37,10 +43,12 @@ export class ArtifactExtractor {
   private static readonly MAX_ANSWER_QUESTIONS = 5
   private static readonly MAX_LABEL_LENGTH = 80
 
-  public static extract(calls: readonly IterationRecapToolCall[], answer: string): IterationRecapArtifacts {
+  public static extract(calls: readonly IterationRecapToolCall[], answer: string, prompt: string): IterationRecapArtifacts {
     return {
       files: ArtifactExtractor.files(calls),
+      skills: ArtifactExtractor.skills(calls, prompt),
       repos: ArtifactExtractor.remoteRepos(calls, answer),
+      changedRepos: [],
       pullRequests: ArtifactExtractor.pullRequests(calls, answer),
       reviews: ArtifactExtractor.reviews(calls),
       plans: ArtifactExtractor.plans(calls),
@@ -59,6 +67,42 @@ export class ArtifactExtractor {
     ].map(directory => directory.replace(ArtifactExtractor.QUOTES, '')))
 
     return ArtifactExtractor.unique([...fileDirectories, ...commandDirectories].filter(directory => directory !== '' && directory !== '-'))
+  }
+
+  public static changeDirectories(calls: readonly IterationRecapToolCall[]): string[] {
+    const fileDirectories = ArtifactExtractor.files(calls)
+      .filter(file => file.lastIndexOf('/') > 0)
+      .map(file => file.slice(0, file.lastIndexOf('/')))
+    const gitWriteDirectories = ArtifactExtractor.bashCommands(calls)
+      .filter(command => ArtifactExtractor.GIT_WRITE.test(command))
+      .flatMap(command => {
+        const targets = [
+          ...ArtifactExtractor.matchAll(command, ArtifactExtractor.CD_TARGET, 1),
+          ...ArtifactExtractor.matchAll(command, ArtifactExtractor.GIT_DASH_C, 1),
+        ].map(directory => directory.replace(ArtifactExtractor.QUOTES, ''))
+
+        return targets.length === 0 ? [ArtifactExtractor.SESSION_CWD] : targets
+      })
+
+    return ArtifactExtractor.unique([...fileDirectories, ...gitWriteDirectories].filter(directory => directory !== '' && directory !== '-'))
+  }
+
+  public static createdPullRequestRepos(artifacts: IterationRecapArtifacts): string[] {
+    return ArtifactExtractor.unique(
+      artifacts.pullRequests
+        .filter(link => link.isCreated === true)
+        .map(link => link.label.slice(0, link.label.lastIndexOf('#'))),
+    )
+  }
+
+  private static skills(calls: readonly IterationRecapToolCall[], prompt: string): string[] {
+    const fromTools = calls
+      .filter(call => call.tool === ArtifactExtractor.SKILL_TOOL)
+      .map(call => ArtifactExtractor.stringField(call.input, 'skill'))
+      .filter((skill): skill is string => skill !== undefined)
+    const typed = ArtifactExtractor.COMMAND_NAME_TAG.exec(prompt)?.[1] ?? ArtifactExtractor.SLASH_COMMAND.exec(prompt.trim())?.[1]
+
+    return ArtifactExtractor.unique([...(typed === undefined ? [] : [typed]), ...fromTools].map(skill => `/${skill}`))
   }
 
   private static files(calls: readonly IterationRecapToolCall[]): string[] {
@@ -81,9 +125,11 @@ export class ArtifactExtractor {
   }
 
   private static pullRequests(calls: readonly IterationRecapToolCall[], answer: string): IterationRecapLink[] {
-    const linked = [...ArtifactExtractor.bashTexts(calls), answer]
-      .flatMap(text => [...text.matchAll(ArtifactExtractor.PULL_REQUEST_URL)])
-      .map(([url, owner = '', name = '', number = '']): IterationRecapLink => ({ label: `${owner}/${name}#${number}`, url }))
+    const created = calls
+      .filter(call => !call.isError && ArtifactExtractor.isPullRequestCreation(call))
+      .flatMap(call => ArtifactExtractor.pullRequestLinks(call.resultText, true))
+    const mentioned = [...ArtifactExtractor.bashTexts(calls), answer].flatMap(text => ArtifactExtractor.pullRequestLinks(text, false))
+    const linked = [...created, ...mentioned.filter(link => !created.some(one => one.label === link.label))]
     const linkedNumbers = new Set(linked.map(link => link.label.slice(link.label.lastIndexOf('#') + 1)))
     const numbered = ArtifactExtractor.bashCommands(calls)
       .flatMap(command => [...command.matchAll(ArtifactExtractor.GH_PR_COMMAND)])
@@ -92,6 +138,18 @@ export class ArtifactExtractor {
     const byLabel = new Map([...linked, ...numbered].map(link => [link.label, link]))
 
     return [...byLabel.values()]
+  }
+
+  private static isPullRequestCreation(call: IterationRecapToolCall): boolean {
+    return ArtifactExtractor.GH_PR_CREATE.test(ArtifactExtractor.bashCommand(call) ?? '') || ArtifactExtractor.PR_CREATE_TOOL.test(call.tool)
+  }
+
+  private static pullRequestLinks(text: string, isCreated: boolean): IterationRecapLink[] {
+    return [...text.matchAll(ArtifactExtractor.PULL_REQUEST_URL)].map(([url, owner = '', name = '', number = '']): IterationRecapLink => ({
+      label: `${owner}/${name}#${number}`,
+      url,
+      ...(isCreated ? { isCreated } : {}),
+    }))
   }
 
   private static reviews(calls: readonly IterationRecapToolCall[]): string[] {

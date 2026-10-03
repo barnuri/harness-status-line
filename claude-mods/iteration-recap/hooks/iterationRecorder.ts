@@ -47,7 +47,7 @@ export class IterationRecorder {
       outputTokens: end.outputTokens,
       toolCounts: IterationRecorder.countTools(this.calls),
       endReason: end.reason,
-      artifacts: ArtifactExtractor.extract(this.calls, end.answer),
+      artifacts: ArtifactExtractor.extract(this.calls, end.answer, isOwnTurn ? this.prompt : ''),
     }
     this.turnId = null
 

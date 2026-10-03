@@ -16,7 +16,7 @@ describe('ArtifactExtractor.extract', () => {
       call('Write', { file_path: '/repo/src/a.ts' }),
       call('NotebookEdit', { notebook_path: '/repo/n.ipynb' }),
       call('Edit', { file_path: '/repo/broken.ts' }, 'old_string not found', true),
-    ], '');
+    ], '', '');
 
     expect(artifacts.files).toEqual(['/repo/src/a.ts', '/repo/n.ipynb']);
   });
@@ -26,10 +26,10 @@ describe('ArtifactExtractor.extract', () => {
       call('Bash', { command: 'gh pr create --fill' }, 'https://github.com/acme/web/pull/42\n'),
       call('Bash', { command: 'gh pr merge 42 --squash' }),
       call('Bash', { command: 'gh pr checkout 7' }),
-    ], 'Opened https://github.com/acme/api/pull/9 too.');
+    ], 'Opened https://github.com/acme/api/pull/9 too.', '');
 
     expect(artifacts.pullRequests).toEqual([
-      { label: 'acme/web#42', url: 'https://github.com/acme/web/pull/42' },
+      { label: 'acme/web#42', url: 'https://github.com/acme/web/pull/42', isCreated: true },
       { label: 'acme/api#9', url: 'https://github.com/acme/api/pull/9' },
       { label: '#7 (gh pr checkout)' },
     ]);
@@ -39,7 +39,7 @@ describe('ArtifactExtractor.extract', () => {
     const artifacts = ArtifactExtractor.extract([
       call('Bash', { command: 'git clone git@github.com:acme/tools.git && gh issue list -R acme/infra' }),
       call('Bash', { command: 'curl https://api.github.com/repos/acme/x' }),
-    ], 'See https://github.com/acme/web/pull/1');
+    ], 'See https://github.com/acme/web/pull/1', '');
 
     expect(artifacts.repos).toEqual(['acme/tools', 'acme/infra', 'acme/web']);
   });
@@ -51,7 +51,7 @@ describe('ArtifactExtractor.extract', () => {
       call('Agent', { subagent_type: 'barnuri-dev-skills:bug-hunter', prompt: 'x' }),
       call('ReportFindings', { findings: [{}, {}] }),
       call('Bash', { command: 'gh pr review 12 --approve' }),
-    ], '');
+    ], '', '');
 
     expect(artifacts.reviews).toEqual([
       '/barnuri-dev-skills:cr',
@@ -69,7 +69,7 @@ describe('ArtifactExtractor.extract', () => {
       call('TaskCreate', { subject: 'Write tests' }),
       call('Write', { file_path: '/repo/agent-spec/x/plan.md' }),
       call('Write', { file_path: '/repo/src/planner.ts' }),
-    ], '');
+    ], '', '');
 
     expect(artifacts.plans).toEqual([
       'plan: Migrate auth to OIDC',
@@ -85,7 +85,7 @@ describe('ArtifactExtractor.extract', () => {
       call('Bash', { command: 'git commit -m "feat: a"' }, '[master 1a2b3c4d] feat: a\n 1 file changed'),
       call('Bash', { command: "git add x && git commit -m 'fix: b'" }, ''),
       call('Bash', { command: 'git commit -m "nope"' }, 'nothing to commit', true),
-    ], '');
+    ], '', '');
 
     expect(artifacts.commits).toEqual(['1a2b3c4 feat: a', 'fix: b']);
   });
@@ -102,7 +102,7 @@ describe('ArtifactExtractor.extract', () => {
       '- **Q1** Should the cache expire hourly?',
       'Why?',
       'Want me to open the PR as well?',
-    ].join('\n'));
+    ].join('\n'), '');
 
     expect(artifacts.questions).toEqual([
       { text: 'Which database?', isAnswered: true },
@@ -110,6 +110,50 @@ describe('ArtifactExtractor.extract', () => {
       { text: 'Should the cache expire hourly?', isAnswered: false },
       { text: 'Want me to open the PR as well?', isAnswered: false },
     ]);
+  });
+});
+
+describe('ArtifactExtractor skills and created PRs', () => {
+  it('lists the typed slash command and every Skill tool call once', () => {
+    const artifacts = ArtifactExtractor.extract([
+      call('Skill', { skill: 'barnuri-dev-skills:cr' }),
+      call('Skill', { skill: 'code-gen' }),
+      call('Skill', { skill: 'code-gen' }),
+    ], '', '/code-gen add a feature');
+
+    expect(artifacts.skills).toEqual(['/code-gen', '/barnuri-dev-skills:cr']);
+  });
+
+  it('reads a command-name tag from an expanded slash command prompt', () => {
+    const artifacts = ArtifactExtractor.extract([], '', '<command-name>/goal</command-name> ship it');
+
+    expect(artifacts.skills).toEqual(['/goal']);
+  });
+
+  it('marks PRs from gh pr create and MCP create tools as created, others as mentioned', () => {
+    const artifacts = ArtifactExtractor.extract([
+      call('mcp__github__create_pull_request', { title: 'x' }, '{"html_url":"https://github.com/acme/api/pull/3"}'),
+      call('Bash', { command: 'gh pr view 8' }, 'https://github.com/acme/web/pull/8'),
+    ], '', '');
+
+    expect(artifacts.pullRequests).toEqual([
+      { label: 'acme/api#3', url: 'https://github.com/acme/api/pull/3', isCreated: true },
+      { label: 'acme/web#8', url: 'https://github.com/acme/web/pull/8' },
+    ]);
+    expect(ArtifactExtractor.createdPullRequestRepos(artifacts)).toEqual(['acme/api']);
+  });
+});
+
+describe('ArtifactExtractor.changeDirectories', () => {
+  it('keeps edited folders and git write targets, defaulting to the session folder', () => {
+    const directories = ArtifactExtractor.changeDirectories([
+      call('Edit', { file_path: '/repo/src/a.ts' }),
+      call('Bash', { command: 'cd /other && git commit -m x' }),
+      call('Bash', { command: 'git push origin main' }),
+      call('Bash', { command: 'cd /readonly && git status' }),
+    ]);
+
+    expect(directories).toEqual(['/repo/src', '/other', '.']);
   });
 });
 

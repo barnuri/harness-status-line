@@ -1,5 +1,7 @@
 import type { Elements, RenderElement, RenderSurface } from 'claude-code'
 
+import { SessionTotals } from './sessionTotals'
+
 import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink } from '../types'
 
 type RecapViewElements = Pick<Elements[RenderSurface], 'Box' | 'Text' | 'Button' | 'Link'>
@@ -9,6 +11,7 @@ export class RecapView {
   private static readonly HISTORY_ROWS = 8
   private static readonly OPEN_QUESTION_COLOR = 'yellow'
   private static readonly ACCENT_COLOR = 'cyan'
+  private static readonly SESSION_COLOR = 'magenta'
   private static readonly MS_PER_SECOND = 1000
   private static readonly SECONDS_PER_MINUTE = 60
   private static readonly TOKENS_PER_K = 1000
@@ -31,6 +34,7 @@ export class RecapView {
 
     return (
       <Box flexDirection="column">
+        {RecapView.session(elements, iterations)}
         {RecapView.header(elements, selected, iterations.length)}
         <Text bold wrap="wrap">{selected.summary}</Text>
         <Text> </Text>
@@ -52,6 +56,7 @@ export class RecapView {
     const { Box, Text, Button } = elements
     const openQuestions = RecapView.openQuestions(latest).length
     const counts = [
+      RecapView.plural((latest.artifacts.skills ?? []).length, 'skill'),
       RecapView.plural(latest.artifacts.files.length, 'file'),
       RecapView.plural(latest.artifacts.commits.length, 'commit'),
       RecapView.plural(latest.artifacts.pullRequests.length, 'PR'),
@@ -79,15 +84,19 @@ export class RecapView {
     )
   }
 
-  public static commandText(selected: IterationRecapEntry | undefined, total: number, cwd: string): string {
+  public static commandText(selected: IterationRecapEntry | undefined, iterations: readonly IterationRecapEntry[], cwd: string): string {
     if (selected === undefined) {
       return 'No iterations recorded yet.'
     }
     const { artifacts } = selected
     const lines = [
-      `Iteration ${selected.index}/${total} · ${RecapView.clock(selected.startedAt)} · ${RecapView.duration(selected.durationMs)}`,
+      RecapView.textRow('session repos changed', SessionTotals.changedRepos(iterations)),
+      RecapView.textRow('session PRs created', SessionTotals.createdPullRequests(iterations).map(pr => pr.url ?? pr.label)),
+      `Iteration ${selected.index}/${iterations.length} · ${RecapView.clock(selected.startedAt)} · ${RecapView.duration(selected.durationMs)}`,
       selected.summary,
+      RecapView.textRow('skills', artifacts.skills ?? []),
       RecapView.textRow('files', artifacts.files.map(file => RecapView.relative(file, cwd))),
+      RecapView.textRow('changed', artifacts.changedRepos ?? []),
       RecapView.textRow('repos', artifacts.repos),
       RecapView.textRow('PRs', artifacts.pullRequests.map(pr => pr.url ?? pr.label)),
       RecapView.textRow('reviews', artifacts.reviews),
@@ -97,6 +106,24 @@ export class RecapView {
     ]
 
     return lines.filter(line => line !== '').join('\n')
+  }
+
+  private static session(elements: RecapViewElements, iterations: readonly IterationRecapEntry[]): RenderElement | null {
+    const { Box, Text } = elements
+    const changedRepos = SessionTotals.changedRepos(iterations)
+    const createdPullRequests = SessionTotals.createdPullRequests(iterations)
+    if (changedRepos.length === 0 && createdPullRequests.length === 0) {
+      return null
+    }
+
+    return (
+      <Box flexDirection="column">
+        <Text bold color={RecapView.SESSION_COLOR}>This session</Text>
+        {RecapView.row(elements, 'changed', changedRepos)}
+        {RecapView.linkRow(elements, 'PRs made', createdPullRequests)}
+        <Text> </Text>
+      </Box>
+    )
   }
 
   private static header(elements: RecapViewElements, selected: IterationRecapEntry, total: number): RenderElement {
@@ -130,7 +157,9 @@ export class RecapView {
       <Box flexDirection="column">
         {RecapView.row(elements, 'prompt', selected.prompt === '' ? [] : [selected.prompt])}
         {RecapView.row(elements, 'tools', tools.length === 0 ? [] : [tools.join('  ')])}
+        {RecapView.row(elements, 'skills', artifacts.skills ?? [])}
         {RecapView.row(elements, 'files', artifacts.files.map(file => RecapView.relative(file, cwd)))}
+        {RecapView.row(elements, 'changed', artifacts.changedRepos ?? [])}
         {RecapView.row(elements, 'repos', artifacts.repos)}
         {RecapView.linkRow(elements, 'PRs', artifacts.pullRequests)}
         {RecapView.row(elements, 'reviews', artifacts.reviews)}

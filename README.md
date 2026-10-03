@@ -89,25 +89,31 @@ Each recap holds:
 |---|---|
 | summary | One-line Haiku summary of the turn, with a first-sentence fallback |
 | prompt, tools | The turn's prompt and a count per tool |
+| skills | The typed slash command plus every `Skill` tool call |
 | files | `Edit` / `Write` / `NotebookEdit` targets |
+| changed | Repos written to: git roots of edited files and of `git commit` / `push` / `merge` / `rebase` / `cherry-pick` targets, plus the repo of each created PR |
 | repos | `git rev-parse --show-toplevel` of touched folders, plus GitHub URLs and `gh --repo` flags |
-| PRs | `github.com/<owner>/<repo>/pull/<n>` links and `gh pr <action> <n>` commands |
+| PRs | `github.com/<owner>/<repo>/pull/<n>` links and `gh pr <action> <n>` commands. Links from `gh pr create` or an MCP `create_pull_request` tool are marked created |
 | reviews | `/cr`, `/code-review`, `/review`, `/security-review` skills, review agents, `ReportFindings`, `gh pr review` |
 | plans | `ExitPlanMode`, `/code-gen` / `/arch-design` skills, Plan agents, `TaskCreate`, `plan.md` / `tasks.md` writes |
 | commits | `git commit` output (`<hash> <subject>`) |
 | asked / open ? | `AskUserQuestion` answered or declined, and trailing `?` lines of the final answer |
 
+The pane opens with a **This session** block that collects, across every iteration, the repos that changed and the PRs that were created.
+
+Recording runs from the start of the session, but nothing shows until you run `/summarize`. After that, the band and the pane follow every new iteration until the session ends.
+
 It shows up in two places:
 
 - **Band above the prompt**: the latest recap in one line, with `recap` and `×` buttons.
-- **`/iterations` pane**: the full recap, `◀ prev` / `next ▶` / `latest` buttons (hotkeys `p` / `n` / `l` once the pane has focus) and a clickable history list. It opens by itself after each finished iteration. Close it (`✕` or ctrl+x x) and it stays closed until you run `/iterations`. Opened without being asked, Claude Code seats the pane from 144 terminal columns. Narrower terminals hold it until you run `/iterations`.
+- **`/summarize` pane**: the full recap, `◀ prev` / `next ▶` / `latest` buttons (hotkeys `p` / `n` / `l` once the pane has focus) and a clickable history list. After `/summarize`, it reopens after each new iteration. Close it (`✕` or ctrl+x x) and it stays closed until you run `/summarize` again. When it reopens by itself, Claude Code places the pane only on terminals at least 144 columns wide. Narrower terminals hold it until you run `/summarize`.
 
 | Command | Effect |
 |---|---|
-| `/iterations` | Open the pane on the selected iteration (latest by default) |
-| `/iterations prev` · `next` · `last` | Step backward, step forward, or follow the latest |
-| `/iterations <n>` | Jump to iteration `n` |
-| `/iterations band` | Toggle the band |
+| `/summarize` | Start showing summaries and open the pane on the selected iteration (latest by default) |
+| `/summarize prev` · `next` · `last` | Step backward, step forward, or follow the latest |
+| `/summarize <n>` | Jump to iteration `n` |
+| `/summarize band` | Toggle the band |
 
 Load it for one session:
 
@@ -115,7 +121,7 @@ Load it for one session:
 claude --plugin-dir ./claude-mods/iteration-recap
 ```
 
-To load it in every session, add the absolute path to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`. Options (`/config`, or `pluginConfigs.iteration-recap`): `summarizer` is `haiku` (default) or `heuristic` (no model call). `showBand` and `autoOpen` default to `true`.
+To load it in every session, add the absolute path to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`. Options (`/config`, or `pluginConfigs.iteration-recap`): `summarizer` is `haiku` (default) or `heuristic` (no model call). `showBand` defaults to `true`.
 
 #### Demo
 
@@ -126,6 +132,8 @@ Band after iteration 2 (Haiku summary, counts, open question):
 ```text
 ↻ #2/2 5s · Created plan.md with 3 unit test steps and asked about test runner preference. · 1 file · 1 plan · 1 open ?   [ recap ][ × ]
 ```
+
+The capture below predates the rename, so it shows the old command name `/iterations`. It now runs as `/summarize`.
 
 `/iterations` opens the pane on the latest iteration:
 
@@ -189,7 +197,7 @@ PR, review and plan-mode rows appear the same way when a turn produces them. The
 | `tool.call` | Records each main-loop tool call with its input and result text (subagent calls skipped) |
 | `turn.complete` | Builds the recap, stores it in `$.state` (kept across hot reloads, capped at 200), then enriches it in the background: local git roots and the Haiku summary (8 s timeout, low effort) |
 | `ui.render` | Draws the `Pane` and the `AbovePrompt` band |
-| `command.run` | Serves `/iterations` (`/recap` is a built-in command, so the engine refuses that name) |
+| `command.run` | Serves `/summarize` and switches the band and auto-reopening on for the rest of the session |
 
 ```bash
 claude plugin validate claude-mods/iteration-recap   # manifest + hooks scan

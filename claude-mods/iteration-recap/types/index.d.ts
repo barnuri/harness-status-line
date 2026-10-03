@@ -1,4 +1,4 @@
-export type IterationRecapLink = { label: string; url?: string };
+export type IterationRecapLink = { label: string; url?: string; isCreated?: boolean };
 
 export type IterationRecapQuestion = { text: string; isAnswered: boolean };
 
@@ -19,7 +19,9 @@ export type IterationRecapTurnEnd = {
 
 export type IterationRecapArtifacts = {
   files: string[];
+  skills: string[];
   repos: string[];
+  changedRepos: string[];
   pullRequests: IterationRecapLink[];
   reviews: string[];
   plans: string[];
@@ -41,6 +43,11 @@ export type IterationRecapEntry = {
   artifacts: IterationRecapArtifacts;
 };
 
+export type IterationRecapScope = {
+  touchedDirectories: string[];
+  changedDirectories: string[];
+};
+
 export type IterationRecapHandlers = {
   onPrevious: () => void;
   onNext: () => void;
@@ -57,6 +64,7 @@ declare module 'claude-code' {
       cursor: number | null;
       isBandHidden: boolean;
       isPaneDismissed: boolean;
+      isActive: boolean;
     };
   }
 }
