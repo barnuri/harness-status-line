@@ -1,12 +1,19 @@
-export type IterationRecapLink = { label: string; url?: string; isCreated?: boolean };
+export type IterationRecapLink = { label: string; url?: string; isCreated?: boolean; isBranch?: boolean };
 
 export type IterationRecapQuestion = { text: string; isAnswered: boolean };
+
+export type IterationRecapGitFacts = {
+  editedFiles: string[];
+  commitSha?: string;
+  pullRequest?: { number: number; url?: string; action: string };
+};
 
 export type IterationRecapToolCall = {
   tool: string;
   input: Record<string, unknown>;
   resultText: string;
   isError: boolean;
+  git?: IterationRecapGitFacts;
 };
 
 export type IterationRecapTurnEnd = {
@@ -21,12 +28,17 @@ export type IterationRecapArtifacts = {
   files: string[];
   skills: string[];
   repos: string[];
-  changedRepos: string[];
+  changedRepos: IterationRecapLink[];
   pullRequests: IterationRecapLink[];
   reviews: string[];
   plans: string[];
   commits: string[];
   questions: IterationRecapQuestion[];
+};
+
+export type IterationRecapSummaryFacts = {
+  artifacts: IterationRecapArtifacts;
+  toolCounts: Record<string, number>;
 };
 
 export type IterationRecapEntry = {

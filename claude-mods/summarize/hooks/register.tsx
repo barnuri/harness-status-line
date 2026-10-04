@@ -5,9 +5,11 @@ import { ArtifactExtractor } from './artifactExtractor'
 import { IterationRecorder } from './iterationRecorder'
 import { RecapCursor } from './recapCursor'
 import { RecapSummarizer } from './recapSummarizer'
+import { GitFacts } from './gitFacts'
 import { RecapView } from './recapView'
+import { RepoLink } from './repoLink'
 
-import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapScope } from '../types'
+import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapScope } from '../types'
 
 const PLUGIN = 'summarize'
 const PANE = 'summarize'
@@ -18,6 +20,9 @@ const MAX_REPO_LOOKUPS = 8
 const GIT_TIMEOUT_MS = 3000
 const ENRICH_DELAY_MS = 1
 const SESSION_DIRECTORY = '.'
+const GH_TIMEOUT_MS = 5000
+const DEFAULT_BRANCHES = new Set(['main', 'master', 'develop', 'HEAD'])
+const branchPullRequests = new Map<string, IterationRecapLink>()
 const GIT_STATE_COMMANDS = [['rev-parse', 'HEAD'], ['status', '--porcelain'], ['diff', 'HEAD', '--numstat']] as const
 const RESERVED_TOOL_KEYS = new Set(['tool', 'tool_use_id', 'agentId', 'consent'])
 
@@ -77,15 +82,9 @@ async function repoRoot($: EngineInterface, directory: string): Promise<string |
 }
 
 async function repoRoots($: EngineInterface, directories: readonly string[]): Promise<string[]> {
-  const roots = new Set<string>()
-  for (const directory of directories.slice(0, MAX_REPO_LOOKUPS)) {
-    const root = await repoRoot($, directory)
-    if (root !== null) {
-      roots.add(root)
-    }
-  }
+  const roots = await Promise.all(directories.slice(0, MAX_REPO_LOOKUPS).map(directory => repoRoot($, directory)))
 
-  return [...roots]
+  return [...new Set(roots.filter((root): root is string => root !== null))]
 }
 
 async function gitOutput($: EngineInterface, root: string, args: readonly string[]): Promise<string> {
@@ -120,6 +119,35 @@ async function isRepoChangedSince($: EngineInterface, root: string | null, start
   return (await repoState($, root)) !== startState
 }
 
+async function repoLinks($: EngineInterface, roots: readonly string[]): Promise<IterationRecapLink[]> {
+  return Promise.all(roots.map(async root => RepoLink.fromRoot(root, await gitOutput($, root, ['remote', 'get-url', 'origin']))))
+}
+
+async function branchPullRequest($: EngineInterface, root: string): Promise<IterationRecapLink | null> {
+  const branch = (await gitOutput($, root, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
+  if (branch === '' || DEFAULT_BRANCHES.has(branch)) {
+    return null
+  }
+  const key = `${root}@${branch}`
+  const known = branchPullRequests.get(key)
+  if (known !== undefined) {
+    return known
+  }
+  try {
+    const { exitCode, stdout } = await $.process.run(['gh', 'pr', 'view', branch, '--json', 'number,url'], { cwd: root, timeoutMs: GH_TIMEOUT_MS })
+    const link = exitCode === 0 ? GitFacts.branchPullRequest(stdout) : null
+    if (link !== null) {
+      branchPullRequests.set(key, link)
+    }
+
+    return link
+  } catch (error) {
+    $.ui.log(`${PLUGIN}: gh pr view failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
+
+    return null
+  }
+}
+
 function repoName(root: string): string {
   return root.split('/').at(-1) ?? root
 }
@@ -139,15 +167,33 @@ async function summarize($: EngineInterface, entry: IterationRecapEntry, answer:
   }
 }
 
-async function enrich($: EngineInterface, entry: IterationRecapEntry, answer: string, scope: IterationRecapScope, isModelSummary: boolean): Promise<void> {
-  const touchedRoots = await repoRoots($, scope.touchedDirectories)
-  const changedRoots = await repoRoots($, scope.changedDirectories)
-  const isSessionRepoChanged = await isRepoChangedSince($, scope.startRoot, scope.startState)
-  const allChangedRoots = isSessionRepoChanged && scope.startRoot !== null ? [scope.startRoot, ...changedRoots] : changedRoots
-  const repos = [...new Set([...[...allChangedRoots, ...touchedRoots].map(repoName), ...entry.artifacts.repos])]
-  const changedRepos = [...new Set([...allChangedRoots.map(repoName), ...ArtifactExtractor.createdPullRequestRepos(entry.artifacts)])]
-  await patchEntry($, entry.index, { artifacts: { ...entry.artifacts, repos, changedRepos } })
+async function resolveRepos($: EngineInterface, entry: IterationRecapEntry, scope: IterationRecapScope): Promise<IterationRecapEntry> {
+  try {
+    const [touchedRoots, changedRoots, isSessionRepoChanged] = await Promise.all([
+      repoRoots($, scope.touchedDirectories),
+      repoRoots($, scope.changedDirectories),
+      isRepoChangedSince($, scope.startRoot, scope.startState),
+    ])
+    const allChangedRoots = isSessionRepoChanged && scope.startRoot !== null ? [scope.startRoot, ...changedRoots] : changedRoots
+    const repos = [...new Set([...[...allChangedRoots, ...touchedRoots].map(repoName), ...entry.artifacts.repos])]
+    const uniqueChangedRoots = [...new Set(allChangedRoots)]
+    const [rootLinks, branchLinks] = await Promise.all([
+      repoLinks($, uniqueChangedRoots),
+      Promise.all([...new Set([...uniqueChangedRoots, ...(scope.startRoot === null ? [] : [scope.startRoot])])].map(root => branchPullRequest($, root))),
+    ])
+    const changedRepos = RepoLink.unique([...rootLinks, ...ArtifactExtractor.createdPullRequestRepos(entry.artifacts)])
+    const knownLabels = new Set(entry.artifacts.pullRequests.map(link => link.label))
+    const branchPrs = branchLinks.filter((link): link is IterationRecapLink => link !== null && !knownLabels.has(link.label))
 
+    return { ...entry, artifacts: { ...entry.artifacts, repos, changedRepos, pullRequests: [...entry.artifacts.pullRequests, ...branchPrs] } }
+  } catch (error) {
+    $.ui.log(`${PLUGIN}: repo lookup failed for iteration ${entry.index}: ${error instanceof Error ? error.message : String(error)}`)
+
+    return { ...entry, artifacts: { ...entry.artifacts, changedRepos: ArtifactExtractor.createdPullRequestRepos(entry.artifacts) } }
+  }
+}
+
+async function enrich($: EngineInterface, entry: IterationRecapEntry, answer: string, isModelSummary: boolean): Promise<void> {
   const hasWork = answer.trim() !== '' || Object.keys(entry.toolCounts).length > 0
   const shouldSummarize = isModelSummary && entry.endReason !== 'aborted' && hasWork
   if (shouldSummarize) {
@@ -155,9 +201,9 @@ async function enrich($: EngineInterface, entry: IterationRecapEntry, answer: st
   }
 }
 
-async function enrichSafely($: EngineInterface, entry: IterationRecapEntry, answer: string, scope: IterationRecapScope, isModelSummary: boolean): Promise<void> {
+async function enrichSafely($: EngineInterface, entry: IterationRecapEntry, answer: string, isModelSummary: boolean): Promise<void> {
   try {
-    await enrich($, entry, answer, scope, isModelSummary)
+    await enrich($, entry, answer, isModelSummary)
   } catch (error) {
     $.ui.log(`${PLUGIN}: recap enrichment failed for iteration ${entry.index}: ${error instanceof Error ? error.message : String(error)}`)
   }
@@ -166,7 +212,7 @@ async function enrichSafely($: EngineInterface, entry: IterationRecapEntry, answ
 export const register: Register = (on, options) => {
   const recorder = new IterationRecorder()
   let turnStartRepo: { root: string | null; state: string | null } = { root: null, state: null }
-  const isModelSummary = options.summarizer !== 'heuristic'
+  const isModelSummary = options.summarizer === 'haiku'
   const isBandEnabled = options.showBand !== false
 
   on('session.start', async ($, e, next) => {
@@ -187,14 +233,18 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  on('skill.prompt', async ($, e, next) => {
+    recorder.noteSkill(e.skill)
+
+    return next(e)
+  })
+
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
-    if (e.agentId !== undefined) {
-      return ran
-    }
     const input = Object.fromEntries(Object.entries(e).filter(([key]) => !RESERVED_TOOL_KEYS.has(key)))
     const denial = typeof ran.deny === 'string' ? ran.deny : undefined
-    recorder.record(String(e.tool), input, denial ?? ran.text ?? '', denial !== undefined || ran.isError === true)
+    const git = e.tool === 'Bash' ? GitFacts.fromBashResult(ran.result) : undefined
+    recorder.record(String(e.tool), input, denial ?? ran.text ?? '', denial !== undefined || ran.isError === true, git)
 
     return ran
   })
@@ -212,17 +262,18 @@ export const register: Register = (on, options) => {
     }
     const list = await read($, iterations)
     const index = (list.at(-1)?.index ?? 0) + 1
-    const entry = recorder.finish(
+    const recorded = recorder.finish(
       { turnId: e.turnId, answer: e.answer, durationMs: e.durationMs, reason: e.reason, outputTokens: e.usage?.output_tokens ?? 0 },
       index,
       await $.clock.now(),
     )
-    if (entry === null) {
+    if (recorded === null) {
       return done
     }
+    const entry = await resolveRepos($, recorded, scope)
     await update($, iterations, current => [...current, entry].slice(-MAX_ITERATIONS))
     await autoOpenPane($)
-    $.clock.after(ENRICH_DELAY_MS, () => void enrichSafely($, entry, e.answer, scope, isModelSummary))
+    $.clock.after(ENRICH_DELAY_MS, () => void enrichSafely($, entry, e.answer, isModelSummary))
 
     return done
   })

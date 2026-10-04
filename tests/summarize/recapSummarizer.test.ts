@@ -26,20 +26,36 @@ const entry: IterationRecapEntry = {
   },
 };
 
+const NO_FACTS = { toolCounts: {}, artifacts: { ...entry.artifacts, files: [], commits: [], pullRequests: [] } };
+
 describe('RecapSummarizer.heuristic', () => {
   it('uses the first prose sentence, skipping code and markdown', () => {
     const answer = '## Result\n```ts\nconst x = 1\n```\n**Added** the band. It shows the recap.';
 
-    expect(RecapSummarizer.heuristic(answer)).toBe('Result Added the band.');
+    expect(RecapSummarizer.heuristic(answer, NO_FACTS)).toBe('Result Added the band.');
   });
 
-  it('falls back to a placeholder when the turn has no prose answer', () => {
-    expect(RecapSummarizer.heuristic('')).toBe('(no final answer)');
-    expect(RecapSummarizer.heuristic('```\ncode\n```')).toBe('(no final answer)');
+  it('falls back to a placeholder when the turn has no prose answer and no facts', () => {
+    expect(RecapSummarizer.heuristic('', NO_FACTS)).toBe('(no final answer)');
+    expect(RecapSummarizer.heuristic('```\ncode\n```', NO_FACTS)).toBe('(no final answer)');
+  });
+
+  it('builds a deterministic line from the iteration facts when the answer has no prose', () => {
+    const facts = {
+      toolCounts: { Bash: 3, Edit: 1 },
+      artifacts: {
+        ...entry.artifacts,
+        skills: ['/cr'],
+        pullRequests: [{ label: 'acme/web#4', url: 'https://github.com/acme/web/pull/4', isCreated: true }],
+        questions: [{ text: 'Merge?', isAnswered: false }],
+      },
+    };
+
+    expect(RecapSummarizer.heuristic('', facts)).toBe('Ran /cr, edited 1 file, committed abc1234, opened acme/web#4, asked 1 question, 4 tool calls.');
   });
 
   it('clips long sentences', () => {
-    const summary = RecapSummarizer.heuristic('a'.repeat(300));
+    const summary = RecapSummarizer.heuristic('a'.repeat(300), NO_FACTS);
 
     expect(summary).toHaveLength(160);
     expect(summary.endsWith('…')).toBe(true);

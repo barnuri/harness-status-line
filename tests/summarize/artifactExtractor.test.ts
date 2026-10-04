@@ -140,7 +140,32 @@ describe('ArtifactExtractor skills and created PRs', () => {
       { label: 'acme/api#3', url: 'https://github.com/acme/api/pull/3', isCreated: true },
       { label: 'acme/web#8', url: 'https://github.com/acme/web/pull/8' },
     ]);
-    expect(ArtifactExtractor.createdPullRequestRepos(artifacts)).toEqual(['acme/api']);
+    expect(ArtifactExtractor.createdPullRequestRepos(artifacts)).toEqual([{ label: 'acme/api', url: 'https://github.com/acme/api' }]);
+  });
+});
+
+describe('ArtifactExtractor engine git facts', () => {
+  it('takes PRs, commits and shell-edited files from the Bash result', () => {
+    const artifacts = ArtifactExtractor.extract([
+      {
+        tool: 'Bash',
+        input: { command: './scripts/ship.sh' },
+        resultText: 'shipped',
+        isError: false,
+        git: {
+          editedFiles: ['/w/k/src/a.ts'],
+          commitSha: 'a728d9b1234',
+          pullRequest: { number: 418, url: 'https://github.com/chkp-genai/keystone/pull/418', action: 'created' },
+        },
+      },
+    ], '', '');
+
+    expect(artifacts.files).toEqual(['/w/k/src/a.ts']);
+    expect(artifacts.commits).toEqual(['a728d9b']);
+    expect(artifacts.pullRequests).toEqual([{ label: 'chkp-genai/keystone#418', url: 'https://github.com/chkp-genai/keystone/pull/418', isCreated: true }]);
+    expect(ArtifactExtractor.changeDirectories([
+      { tool: 'Bash', input: { command: 'x' }, resultText: '', isError: false, git: { editedFiles: ['/w/k/src/a.ts'] } },
+    ])).toEqual(['/w/k/src']);
   });
 });
 

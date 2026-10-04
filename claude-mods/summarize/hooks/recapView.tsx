@@ -18,7 +18,6 @@ export class RecapView {
     changed: 'greenBright',
     tools: 'blueBright',
     files: 'white',
-    repos: 'cyan',
     links: 'cyanBright',
     reviews: 'yellowBright',
     plans: 'blueBright',
@@ -71,10 +70,7 @@ export class RecapView {
     handlers: IterationRecapHandlers,
   ): RenderElement {
     const { Box, Text, Button } = elements
-    const { artifacts } = latest
     const openQuestions = RecapView.openQuestions(latest).length
-    const changedRepos = artifacts.changedRepos ?? []
-    const skills = artifacts.skills ?? []
 
     return (
       <Box flexDirection="row">
@@ -83,9 +79,6 @@ export class RecapView {
             <Text bold color={RecapView.COLORS.accent}>↻ #{latest.index}/{total}</Text>
             <Text dimColor> {RecapView.duration(latest.durationMs)} · </Text>
             <Text color={RecapView.COLORS.summary}>{latest.summary}</Text>
-            {changedRepos.length > 0 && <Text color={RecapView.COLORS.changed}> · ✎ {changedRepos.join(', ')}</Text>}
-            {skills.length > 0 && <Text color={RecapView.COLORS.skills}> · {skills.join(' ')}</Text>}
-            {artifacts.pullRequests.length > 0 && <Text color={RecapView.COLORS.links}> · {RecapView.plural(artifacts.pullRequests.length, 'PR')}</Text>}
             {openQuestions > 0 && <Text color={RecapView.COLORS.open}> · {openQuestions} open ?</Text>}
           </Text>
         </Box>
@@ -104,15 +97,13 @@ export class RecapView {
     }
     const { artifacts } = selected
     const lines = [
-      RecapView.textRow('session repos changed', SessionTotals.changedRepos(iterations)),
-      RecapView.textRow('session PRs created', SessionTotals.createdPullRequests(iterations).map(pr => pr.url ?? pr.label)),
+      'This session',
+      RecapView.alwaysTextRow('repos', SessionTotals.changedRepos(iterations).map(repo => repo.url ?? repo.label)),
+      RecapView.alwaysTextRow('PRs', SessionTotals.pullRequests(iterations).map(pr => pr.url ?? pr.label)),
+      RecapView.alwaysTextRow('skills', SessionTotals.skills(iterations)),
       `Iteration ${selected.index}/${iterations.length} · ${RecapView.clock(selected.startedAt)} · ${RecapView.duration(selected.durationMs)}`,
       selected.summary,
-      RecapView.alwaysTextRow('changed', artifacts.changedRepos ?? []),
-      RecapView.alwaysTextRow('skills', artifacts.skills ?? []),
       RecapView.alwaysTextRow('tools', RecapView.toolList(selected)),
-      RecapView.alwaysTextRow('repos', artifacts.repos),
-      RecapView.alwaysTextRow('PRs', artifacts.pullRequests.map(pr => pr.url ?? pr.label)),
       RecapView.textRow('files', artifacts.files.map(file => RecapView.relative(file, cwd))),
       RecapView.textRow('reviews', artifacts.reviews),
       RecapView.textRow('plans', artifacts.plans.map(plan => RecapView.relative(plan, cwd))),
@@ -123,19 +114,15 @@ export class RecapView {
     return lines.filter(line => line !== '').join('\n')
   }
 
-  private static session(elements: RecapViewElements, iterations: readonly IterationRecapEntry[]): RenderElement | null {
+  private static session(elements: RecapViewElements, iterations: readonly IterationRecapEntry[]): RenderElement {
     const { Box, Text } = elements
-    const changedRepos = SessionTotals.changedRepos(iterations)
-    const createdPullRequests = SessionTotals.createdPullRequests(iterations)
-    if (changedRepos.length === 0 && createdPullRequests.length === 0) {
-      return null
-    }
 
     return (
       <Box flexDirection="column">
         <Text bold color={RecapView.COLORS.session}>◆ This session</Text>
-        {RecapView.row(elements, 'changed', changedRepos, RecapView.COLORS.changed)}
-        {RecapView.linkRow(elements, 'PRs made', createdPullRequests)}
+        {RecapView.alwaysLinkRow(elements, 'repos', SessionTotals.changedRepos(iterations), RecapView.COLORS.changed)}
+        {RecapView.alwaysLinkRow(elements, 'PRs', SessionTotals.pullRequests(iterations), RecapView.COLORS.links)}
+        {RecapView.alwaysRow(elements, 'skills', SessionTotals.skills(iterations), RecapView.COLORS.skills)}
         <Text> </Text>
       </Box>
     )
@@ -166,11 +153,7 @@ export class RecapView {
 
     return (
       <Box flexDirection="column">
-        {RecapView.alwaysRow(elements, 'changed', artifacts.changedRepos ?? [], RecapView.COLORS.changed)}
-        {RecapView.alwaysRow(elements, 'skills', artifacts.skills ?? [], RecapView.COLORS.skills)}
         {RecapView.alwaysRow(elements, 'tools', RecapView.toolList(selected), RecapView.COLORS.tools)}
-        {RecapView.alwaysRow(elements, 'repos', artifacts.repos, RecapView.COLORS.repos)}
-        {RecapView.alwaysLinkRow(elements, 'PRs', artifacts.pullRequests)}
         {RecapView.row(elements, 'files', artifacts.files.map(file => RecapView.relative(file, cwd)), RecapView.COLORS.files)}
         {RecapView.row(elements, 'reviews', artifacts.reviews, RecapView.COLORS.reviews)}
         {RecapView.row(elements, 'plans', artifacts.plans.map(plan => RecapView.relative(plan, cwd)), RecapView.COLORS.plans)}
@@ -258,16 +241,12 @@ export class RecapView {
     return values.length === 0 ? null : RecapView.alwaysRow(elements, label, values, color)
   }
 
-  private static linkRow(elements: RecapViewElements, label: string, links: readonly IterationRecapLink[]): RenderElement | null {
-    return links.length === 0 ? null : RecapView.alwaysLinkRow(elements, label, links)
-  }
-
-  private static alwaysLinkRow(elements: RecapViewElements, label: string, links: readonly IterationRecapLink[]): RenderElement {
+  private static alwaysLinkRow(elements: RecapViewElements, label: string, links: readonly IterationRecapLink[], color: string): RenderElement {
     const { Box, Text, Link } = elements
 
     return (
       <Box flexDirection="row" flexWrap="wrap">
-        <Text bold color={RecapView.COLORS.links}>{label.padEnd(RecapView.LABEL_WIDTH)}</Text>
+        <Text bold color={color}>{label.padEnd(RecapView.LABEL_WIDTH)}</Text>
         {links.length === 0 && <Text dimColor>{RecapView.NONE}</Text>}
         {links.map(link => (link.url === undefined ? <Text>{link.label} </Text> : <Link href={link.url} label={`${link.isCreated === true ? '+ ' : ''}${link.label} `} />))}
       </Box>
@@ -298,10 +277,6 @@ export class RecapView {
     const prefix = cwd.endsWith('/') ? cwd : `${cwd}/`
 
     return cwd !== '' && path.startsWith(prefix) ? path.slice(prefix.length) : path
-  }
-
-  private static plural(count: number, noun: string): string {
-    return `${count} ${noun}${count === 1 ? '' : 's'}`
   }
 
   private static duration(ms: number): string {

@@ -83,31 +83,35 @@ Claude Code pipes `StatusJSON` on each refresh. Rate-limit and auth segments com
 
 [`claude-mods/summarize`](claude-mods/summarize) is a Claude Code mod (a function-hooks plugin). It recaps every iteration (one prompt → one finished turn) and lets you jump between earlier recaps.
 
-Each recap holds the rows below. Summary, changed, skills, tools, repos and PRs always show (`none` when empty). The rest show only when they have content. Every row has its own color.
+The pane has two parts.
+
+**This session** (top) collects, across every iteration, the repos that changed, the PRs, and the skills used. All three rows always show (`none` when empty). Every entry is a clickable link: a repo opens its `origin` remote (https, ssh and scp remotes are converted to web URLs), or its folder as a `file://` link when it has no remote. The desktop app shows `file://` links as plain text.
 
 | Row | Source |
 |---|---|
-| summary | One-line Haiku summary of the turn, with a first-sentence fallback |
-| changed | Repos written to: the session repo when its git state (`HEAD`, `status --porcelain`, `diff HEAD --numstat`) differs between turn start and end, so edits made through shell commands count; git roots of edited files and of `git commit` / `push` / `merge` / `rebase` / `cherry-pick` targets; the repo of each created PR |
-| skills | The typed slash command plus every `Skill` tool call |
+| repos | Repos written to during the session: repos of files a shell command changed (the engine's `bashEditDiff` on Bash results), the session repo when its git state (`HEAD`, `status --porcelain`, `diff HEAD --numstat`) differs between turn start and end, so edits made through shell commands count; git roots of edited files and of `git commit` / `push` / `merge` / `rebase` / `cherry-pick` targets; the repo of each created PR |
+| skills | Every skill the engine expands (`skill.prompt`): typed as `/name`, called through the `Skill` tool, or preloaded into a subagent |
+| PRs | The open PR of the current branch in the session repo and every changed repo (`gh pr view <branch> --json number,url`, the same PR Claude Code's footer shows; skipped on `main` / `master` / `develop`, cached per branch once found), plus PRs created during the session: the engine's own `gitOperation.pr` on Bash results, `gh pr create` output, or an MCP `create_pull_request` tool |
+
+**Iteration** (below it) recaps the selected iteration. Summary and tools always show. The rest show only when they have content. Tool calls made inside subagents count toward the iteration that started them. Every row has its own color.
+
+| Row | Source |
+|---|---|
+| summary | Deterministic by default, with no model call: the first prose sentence of the final answer, or a line built from the iteration's facts (`Ran /cr, edited 2 files, committed a1b2c3d, opened acme/web#4, 9 tool calls.`) when the answer has none. Set `summarizer` to `haiku` for a one-line Haiku summary instead |
 | tools | A count per tool |
-| repos | Changed repos plus every touched repo: `git rev-parse --show-toplevel` of touched folders, GitHub URLs, `gh --repo` flags |
-| PRs | `github.com/<owner>/<repo>/pull/<n>` links and `gh pr <action> <n>` commands. Links from `gh pr create` or an MCP `create_pull_request` tool are marked created (`+`) |
-| prompt | Collapsed by default. `▸ prompt` (hotkey `i`) expands it |
-| files | `Edit` / `Write` / `NotebookEdit` targets |
+| prompt | Collapsed by default. `✎` (hotkey `i`) expands it |
+| files | `Edit` / `Write` / `NotebookEdit` targets and files a shell command changed (`bashEditDiff`) |
 | reviews | `/cr`, `/code-review`, `/review`, `/security-review` skills, review agents, `ReportFindings`, `gh pr review` |
 | plans | `ExitPlanMode`, `/code-gen` / `/arch-design` skills, Plan agents, `TaskCreate`, `plan.md` / `tasks.md` writes |
-| commits | `git commit` output (`<hash> <subject>`) |
+| commits | The engine's `gitOperation.commit` sha on Bash results, else `git commit` output (`<hash> <subject>`) |
 | asked / open ? | `AskUserQuestion` answered or declined, and trailing `?` lines of the final answer |
-
-The pane opens with a **This session** block that collects, across every iteration, the repos that changed and the PRs that were created.
 
 Recording runs from the start of the session, but nothing shows until you run `/summarize`. After that, the band and the pane follow every new iteration until the session ends.
 
 It shows up in two places:
 
-- **Band above the prompt**: the latest recap in one line (summary, `✎` changed repos, skills, PR count, open questions), with `summary` and `×` buttons.
-- **`/summarize` pane**: the full recap, `◀ prev` / `next ▶` / `latest` buttons (hotkeys `p` / `n` / `l` once the pane has focus) and a history list, collapsed by default, that `▸ history` (hotkey `h`) expands. After `/summarize`, it reopens after each new iteration. Close it (`✕` or ctrl+x x) and it stays closed until you run `/summarize` again. When it reopens by itself, Claude Code places the pane only on terminals at least 144 columns wide. Narrower terminals hold it until you run `/summarize`.
+- **Band above the prompt**: the latest recap in one line (summary, open questions), with `summary` and `×` buttons.
+- **`/summarize` pane**: the full recap, with an icon footer pinned to the bottom: `p: ◀` previous, `n: ▶` next, `l: ⏭` latest, `h: ☰` history and `i: ✎` prompt. History and prompt are collapsed by default. Click an icon, or focus the pane (click it, or ctrl+x tab) and press its key. Mods can't bind keys that work from the prompt itself. After `/summarize`, it reopens after each new iteration. Close it (`✕` or ctrl+x x) and it stays closed until you run `/summarize` again. When it reopens by itself, Claude Code places the pane only on terminals at least 144 columns wide. Narrower terminals hold it until you run `/summarize`.
 
 | Command | Effect |
 |---|---|
@@ -122,7 +126,7 @@ Load it for one session:
 claude --plugin-dir ./claude-mods/summarize
 ```
 
-To load it in every session, add the absolute path to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`. Options (`/config`, or `pluginConfigs.summarize`): `summarizer` is `haiku` (default) or `heuristic` (no model call). `showBand` defaults to `true`.
+To load it in every session, add the absolute path to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`. Options (`/config`, or `pluginConfigs.summarize`): `summarizer` is `heuristic` (default, no model call) or `haiku` (one Haiku call per iteration). `showBand` defaults to `true`.
 
 #### Demo
 
@@ -195,8 +199,9 @@ PR, review and plan-mode rows appear the same way when a turn produces them. The
 | Event | What the mod does |
 |---|---|
 | `turn.start` | Starts a draft with the prompt and start time |
-| `tool.call` | Records each main-loop tool call with its input and result text (subagent calls skipped) |
-| `turn.complete` | Builds the recap, stores it in `$.state` (kept across hot reloads, capped at 200), then enriches it in the background: local git roots and the Haiku summary (8 s timeout, low effort) |
+| `skill.prompt` | Records every skill the engine expands for the current iteration |
+| `tool.call` | Records each tool call with its input and result text, subagent calls included |
+| `turn.complete` | Builds the recap, resolves local git roots and remotes, then stores it in `$.state` (kept across hot reloads, capped at 200). With `summarizer: haiku`, it asks Haiku for the summary in the background (8 s timeout, low effort) |
 | `ui.render` | Draws the `Pane` and the `AbovePrompt` band |
 | `command.run` | Serves `/summarize` and switches the band and auto-reopening on for the rest of the session |
 

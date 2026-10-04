@@ -29,17 +29,27 @@ const BAND = {
 
 const SUMMARIZE = { command: 'summarize', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } } as const
 
-function engineStubs(on: On, onOpen: (id: string) => void = () => undefined, gitState: () => string = () => 'clean'): void {
+function engineStubs(
+  on: On,
+  onOpen: (id: string) => void = () => undefined,
+  gitState: () => string = () => 'clean',
+  onModel: () => void = () => undefined,
+  ghPrView: string | null = null,
+): void {
   on('turn.start', async ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', async ($, e) => ({ text: e.answer }))
   on('command.register', async ($, e) => ({ value: { command: e.name } }))
   on('session.cwd', async () => ({ value: '/work/web' }))
   on('process.run', async ($, e) => {
-    const stdout = e.argv.includes('--show-toplevel') ? '/work/web\n' : gitState()
+    if (e.argv[0] === 'gh') {
+      return { value: { exitCode: ghPrView === null ? 1 : 0, stdout: ghPrView ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
+    const branch = e.argv.includes('--abbrev-ref') ? 'feature/x\n' : undefined
+    const stdout = e.argv.includes('--show-toplevel') ? '/work/web\n' : branch ?? gitState()
 
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  on('model.complete', async () => ({
+  on('model.complete', async () => (onModel(), {
     value: {
       isAnswered: true,
       text: 'Opened PR acme/web#42 after fixing the login redirect.',
@@ -74,7 +84,7 @@ async function runIteration($: Engine, turnId: string, prompt: string, answer: s
   await $.turn.complete({ answer, durationMs: 72_000, isAborted: false, turnId, reason: 'answer' })
 }
 
-test('records an iteration with its artifacts and an AI summary', async ($, on) => {
+test('records an iteration with its artifacts and an AI summary', { options: { summarizer: 'haiku' } }, async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
 
@@ -87,11 +97,14 @@ test('records an iteration with its artifacts and an AI summary', async ($, on) 
     expect((await ui.find({ type: 'Text', text: /Iteration 1\/1/ }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: /Opened PR acme\/web#42/ }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'src/login.ts' }))).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: /web, acme\/web/ }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'Want me to merge it?' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'This session' }))).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: 'web, acme/web' }))).toBeDefined()
-    expect((await ui.findAll({ type: 'Link' })).map(link => link.props.href)).toContain('https://github.com/acme/web/pull/42')
+    const hrefs = (await ui.findAll({ type: 'Link' })).map(link => link.props.href)
+    expect(hrefs).toContain('https://github.com/acme/web/pull/42')
+    expect(hrefs).toContain('https://github.com/acme/web')
+    if (surface === 'terminal') {
+      expect(hrefs).toContain('file:///work/web')
+    }
     expect((await ui.find({ type: 'Text', text: '/cr' }))).toBeDefined()
     await ui.unmount()
   }
@@ -147,7 +160,6 @@ test('band shows the latest recap and hides on press', { options: { summarizer: 
 
   const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...BAND })
   expect(await ui.find({ type: 'Text', text: /1 open \?/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /1 PR/ })).toBeDefined()
 
   await ui.press({ key: 'hide' })
   expect(await ui.find({ type: 'Text', text: /1 open \?/ })).toBeUndefined()
@@ -172,7 +184,7 @@ test('stays hidden until /summarize, then opens after every new iteration', { op
   expect(opened).toEqual(['summarize', 'summarize'])
 })
 
-test('collapses the prompt by default and always shows changed, skills, tools, repos and PRs', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+test('collapses the prompt by default and always shows skills, tools and the session repos and PRs', { options: { summarizer: 'heuristic' } }, async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
 
@@ -181,7 +193,7 @@ test('collapses the prompt by default and always shows changed, skills, tools, r
   await clock.advance(10)
 
   const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
-  for (const label of ['changed', 'skills', 'tools', 'repos', 'PRs']) {
+  for (const label of ['skills', 'tools', 'repos', 'PRs']) {
     expect(await ui.find({ type: 'Text', text: new RegExp(`^${label}\\s`) })).toBeDefined()
   }
   expect((await ui.findAll({ type: 'Text', text: 'none' })).length).toBeGreaterThanOrEqual(4)
@@ -205,5 +217,46 @@ test('counts the session repo as changed when its git state moved during the tur
   await clock.settle()
 
   const answer = await $.command.run(SUMMARIZE)
-  expect(answer.text).toMatch(/changed\s+web/)
+  expect(answer.text).toMatch(/This session\nrepos\s+file:\/\/\/work\/web/)
+})
+
+test('records skills from skill.prompt, typed before the turn or loaded during it', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  engineStubs(on)
+  on('skill.prompt', async ($, e) => ({ text: e.text }))
+
+  await $.skill.prompt({ skill: 'barnuri-dev-skills:code-gen', text: 'plan' })
+  await $.turn.start({ text: 'build it', turnId: 't1' })
+  await $.skill.prompt({ skill: 'dev-guidelines', text: 'rules' })
+  await $.turn.complete({ answer: 'Built.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10)
+
+  const answer = await $.command.run(SUMMARIZE)
+  expect(answer.text).toMatch(/skills\s+\/barnuri-dev-skills:code-gen, \/dev-guidelines/)
+})
+
+test('makes no model call by default and summarizes from the answer', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  let modelCalls = 0
+  engineStubs(on, () => undefined, () => 'clean', () => { modelCalls += 1 })
+
+  await runIteration($, 't1', 'fix it', 'Fixed the redirect. Tests pass.')
+  await clock.advance(10)
+  await clock.settle()
+
+  const answer = await $.command.run(SUMMARIZE)
+  expect(answer.text).toContain('Fixed the redirect.')
+  expect(modelCalls).toBe(0)
+})
+
+test('detects the open PR of the session repo branch with gh, like the footer', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, '{"number":418,"url":"https://github.com/chkp-genai/keystone/pull/418"}')
+
+  await $.turn.start({ text: 'look around', turnId: 't1' })
+  await $.turn.complete({ answer: 'Looked.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10)
+
+  const answer = await $.command.run(SUMMARIZE)
+  expect(answer.text).toMatch(/PRs\s+https:\/\/github\.com\/chkp-genai\/keystone\/pull\/418/)
 })

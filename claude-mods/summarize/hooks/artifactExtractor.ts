@@ -1,3 +1,4 @@
+import { RepoLink } from './repoLink'
 import { TextFormat } from './textFormat'
 
 import type {
@@ -87,11 +88,11 @@ export class ArtifactExtractor {
     return ArtifactExtractor.unique([...fileDirectories, ...gitWriteDirectories].filter(directory => directory !== '' && directory !== '-'))
   }
 
-  public static createdPullRequestRepos(artifacts: IterationRecapArtifacts): string[] {
-    return ArtifactExtractor.unique(
+  public static createdPullRequestRepos(artifacts: IterationRecapArtifacts): IterationRecapLink[] {
+    return RepoLink.unique(
       artifacts.pullRequests
         .filter(link => link.isCreated === true)
-        .map(link => link.label.slice(0, link.label.lastIndexOf('#'))),
+        .map(link => RepoLink.fromSlug(link.label.slice(0, link.label.lastIndexOf('#')))),
     )
   }
 
@@ -109,8 +110,9 @@ export class ArtifactExtractor {
     const paths = calls
       .filter(call => ArtifactExtractor.FILE_EDIT_TOOLS.has(call.tool) && !call.isError)
       .map(call => ArtifactExtractor.stringField(call.input, 'file_path') ?? ArtifactExtractor.stringField(call.input, 'notebook_path'))
+    const shellEdits = calls.filter(call => !call.isError).flatMap(call => call.git?.editedFiles ?? [])
 
-    return ArtifactExtractor.unique(paths.filter((path): path is string => path !== undefined))
+    return ArtifactExtractor.unique([...paths.filter((path): path is string => path !== undefined), ...shellEdits])
   }
 
   private static remoteRepos(calls: readonly IterationRecapToolCall[], answer: string): string[] {
@@ -125,9 +127,11 @@ export class ArtifactExtractor {
   }
 
   private static pullRequests(calls: readonly IterationRecapToolCall[], answer: string): IterationRecapLink[] {
-    const created = calls
+    const fromEngine = calls.flatMap(call => ArtifactExtractor.engineLink(call))
+    const fromCreateOutput = calls
       .filter(call => !call.isError && ArtifactExtractor.isPullRequestCreation(call))
       .flatMap(call => ArtifactExtractor.pullRequestLinks(call.resultText, true))
+    const created = [...fromEngine, ...fromCreateOutput.filter(link => !fromEngine.some(one => one.label === link.label))]
     const mentioned = [...ArtifactExtractor.bashTexts(calls), answer].flatMap(text => ArtifactExtractor.pullRequestLinks(text, false))
     const linked = [...created, ...mentioned.filter(link => !created.some(one => one.label === link.label))]
     const linkedNumbers = new Set(linked.map(link => link.label.slice(link.label.lastIndexOf('#') + 1)))
@@ -138,6 +142,17 @@ export class ArtifactExtractor {
     const byLabel = new Map([...linked, ...numbered].map(link => [link.label, link]))
 
     return [...byLabel.values()]
+  }
+
+  private static engineLink(call: IterationRecapToolCall): IterationRecapLink[] {
+    const pr = call.git?.pullRequest
+    if (pr === undefined) {
+      return []
+    }
+    const fromUrl = pr.url === undefined ? undefined : ArtifactExtractor.pullRequestLinks(pr.url, false)[0]
+    const label = fromUrl?.label ?? `#${pr.number}`
+
+    return [{ label, ...(pr.url === undefined ? {} : { url: pr.url }), ...(pr.action === 'created' ? { isCreated: true } : {}) }]
   }
 
   private static isPullRequestCreation(call: IterationRecapToolCall): boolean {
@@ -175,13 +190,14 @@ export class ArtifactExtractor {
 
   private static commits(calls: readonly IterationRecapToolCall[]): string[] {
     const commits = calls
-      .filter(call => !call.isError && ArtifactExtractor.GIT_COMMIT.test(ArtifactExtractor.bashCommand(call) ?? ''))
+      .filter(call => !call.isError && (call.git?.commitSha !== undefined || ArtifactExtractor.GIT_COMMIT.test(ArtifactExtractor.bashCommand(call) ?? '')))
       .map(call => ArtifactExtractor.commitLabel(call))
 
     return ArtifactExtractor.unique(commits.filter(commit => commit !== ''))
   }
 
   private static commitLabel(call: IterationRecapToolCall): string {
+    const engineSha = call.git?.commitSha
     const output = ArtifactExtractor.GIT_COMMIT_OUTPUT.exec(call.resultText)
     if (output !== null) {
       const [, , hash = '', subject = ''] = output
@@ -189,8 +205,10 @@ export class ArtifactExtractor {
       return `${hash.slice(0, ArtifactExtractor.SHORT_HASH_LENGTH)} ${ArtifactExtractor.shorten(subject)}`
     }
     const message = ArtifactExtractor.GIT_COMMIT_MESSAGE.exec(ArtifactExtractor.bashCommand(call) ?? '')
+    const subject = message === null ? '' : ArtifactExtractor.shorten(message[1] ?? message[2] ?? '')
+    const shortSha = engineSha?.slice(0, ArtifactExtractor.SHORT_HASH_LENGTH)
 
-    return message === null ? '' : ArtifactExtractor.shorten(message[1] ?? message[2] ?? '')
+    return [shortSha, subject].filter(part => part !== undefined && part !== '').join(' ')
   }
 
   private static askedQuestions(calls: readonly IterationRecapToolCall[]): IterationRecapQuestion[] {

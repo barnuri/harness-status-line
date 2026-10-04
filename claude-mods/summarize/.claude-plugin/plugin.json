@@ -10,12 +10,12 @@
     "summarizer": {
       "type": "string",
       "title": "Recap summarizer",
-      "description": "haiku: one-line AI summary per iteration; heuristic: first sentence of the answer, no model call",
+      "description": "heuristic (default): deterministic, no model call, first sentence of the answer or a line built from the iteration facts; haiku: one-line AI summary per iteration",
       "options": [
-        "haiku",
-        "heuristic"
+        "heuristic",
+        "haiku"
       ],
-      "default": "haiku"
+      "default": "heuristic"
     },
     "showBand": {
       "type": "boolean",

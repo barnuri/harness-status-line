@@ -59,3 +59,27 @@ describe('IterationRecorder', () => {
     expect(recorder.toolCalls[0]?.resultText).toHaveLength(4000);
   });
 });
+
+describe('IterationRecorder skills', () => {
+  it('keeps a skill typed before the turn and adds skills loaded during it', () => {
+    const recorder = new IterationRecorder();
+    recorder.noteSkill('barnuri-dev-skills:code-gen');
+    recorder.start('t1', 'implement it', 0);
+    recorder.noteSkill('dev-guidelines');
+    recorder.record('Skill', { skill: 'dev-guidelines' }, 'loaded', false);
+
+    const entry = recorder.finish(end('t1', 'Done.'), 1, 10);
+
+    expect(entry?.artifacts.skills).toEqual(['/barnuri-dev-skills:code-gen', '/dev-guidelines']);
+  });
+
+  it('does not carry a finished turn\'s skills into the next turn', () => {
+    const recorder = new IterationRecorder();
+    recorder.start('t1', 'a', 0);
+    recorder.noteSkill('cr');
+    recorder.finish(end('t1', 'A.'), 1, 10);
+    recorder.start('t2', 'b', 20);
+
+    expect(recorder.finish(end('t2', 'B.'), 2, 30)?.artifacts.skills).toEqual([]);
+  });
+});
