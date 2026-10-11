@@ -28,6 +28,10 @@ export interface RateLimit {
   readonly reset_at?: string;
   readonly resets_at?: number;
   readonly remaining?: number;
+  // Claude gateway / Enterprise spend limit (rate_limits.spend_limit).
+  readonly used_usd?: number;
+  readonly limit_usd?: number;
+  readonly period?: 'daily' | 'weekly' | 'monthly';
 }
 
 export interface RateLimits {
@@ -180,6 +184,19 @@ export interface OpencodeStatusInput {
   readonly contextWindowSize?: number;
   readonly version?: string;
   readonly sessionCostUsd?: number;
+}
+
+export interface SessionSpendEntry {
+  readonly start_usd: number;
+  readonly last_usd: number;
+  readonly carried_usd: number;
+  readonly updated_at: string;
+}
+
+export interface SpendLimitCache {
+  readonly limit_usd?: number;
+  // Last spend reading from the Claude API for its month; the status line shows max(api, local sum).
+  readonly api?: { readonly month?: string; readonly used_usd?: number };
 }
 
 export interface UsageSnapshot {

@@ -726,6 +726,48 @@ describe('buildSegments() — rate limit segments', () => {
     const segs = parser.buildSegments({ rate_limits: { five_hour: { used_percentage: 13 } } }, cfg);
     expect(segs.find(s => s.label === 'daily')?.value).toBe('13% used');
   });
+
+  it('renders spend_limit as $used/$limit · pct · reset date', () => {
+    const resets_at = Math.floor(Date.now() / 1000) + 21 * 86400 + 3600;
+    const segs = parser.buildSegments({
+      rate_limits: { spend_limit: { used_percentage: 0.44, resets_at, used_usd: 19.93, limit_usd: 4500, period: 'monthly' } },
+    }, cfg);
+    const seg = segs.find(s => s.label === 'monthly');
+    expect(seg?.value).toBe('$19.93/$4,500.00 · 0% · resets in 21 days');
+    expect(seg?.icon).toBe('💳 ');
+    expect(seg?.bg).toEqual(cfg.colors.rateHealthy.bg);
+  });
+
+  it('spend_limit without usd or period shows percent under "spend" and relative reset', () => {
+    const resets_at = Math.floor(Date.now() / 1000) + 2 * 3600 + 120;
+    const segs = parser.buildSegments({ rate_limits: { spend_limit: { used_percentage: 85, resets_at } } }, cfg);
+    const seg = segs.find(s => s.label === 'spend');
+    expect(seg?.value).toMatch(/^85% · resets in 2h\d+m$/);
+    expect(seg?.bg).toEqual(cfg.colors.rateCritical.bg);
+  });
+
+  it('spend_limit reset one day out says "in 1 day"', () => {
+    const resets_at = Math.floor(Date.now() / 1000) + 86400 + 3600;
+    const segs = parser.buildSegments({ rate_limits: { spend_limit: { used_percentage: 5, resets_at } } }, cfg);
+    expect(segs.find(s => s.label === 'spend')?.value).toBe('5% · resets in 1 day');
+  });
+
+  it('keeps the session cost segment next to spend_limit', () => {
+    const segs = parser.buildSegments({
+      cost: { total_cost_usd: 1.234 },
+      rate_limits: { spend_limit: { used_percentage: 10, used_usd: 450, limit_usd: 4500 } },
+    }, cfg);
+    expect(segs.find(s => s.label === 'cost')?.value).toBe('$1.23 session');
+    expect(segs.find(s => s.label === 'spend')?.value).toBe('$450.00/$4,500.00 · 10%');
+  });
+
+  it('still hides session cost behind subscription windows', () => {
+    const segs = parser.buildSegments({
+      cost: { total_cost_usd: 1.234 },
+      rate_limits: { five_hour: { used_percentage: 13 } },
+    }, cfg);
+    expect(segs.find(s => s.label === 'cost')).toBeUndefined();
+  });
 });
 
 // ────────────────────────────────────────────────────────

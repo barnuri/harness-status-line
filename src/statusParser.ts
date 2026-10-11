@@ -31,6 +31,9 @@ export class StatusParser {
   private static readonly SESSION_COST_ICON = '💵 ';
   private static readonly LINES_LABEL = 'lines';
   private static readonly LINES_ICON = '✏ ';
+  private static readonly SPEND_LIMIT_KEY = 'spend_limit';
+  private static readonly SPEND_LABEL = 'spend';
+  private static readonly SECS_PER_DAY = 24 * 3600;
   private static readonly NANO_PER_AI_CREDIT = 1_000_000_000;
   private static readonly USD_PER_AI_CREDIT = 0.01;
 
@@ -166,7 +169,8 @@ export class StatusParser {
       const rateLimits = this.extractRateLimits(status, colors);
       segments.push(...rateLimits);
 
-      if (!credits && rateLimits.length === 0) {
+      const hasSpendLimit = status.rate_limits?.[StatusParser.SPEND_LIMIT_KEY] !== undefined;
+      if (!credits && (rateLimits.length === 0 || hasSpendLimit)) {
         const sessionCost = this.buildSessionCostSegment(status, colors);
         if (sessionCost) {
           segments.push(sessionCost);
@@ -609,11 +613,48 @@ export class StatusParser {
     if (pct === null) {
       return null;
     }
+    if (key === StatusParser.SPEND_LIMIT_KEY) {
+      return this.buildSpendLimitSegment(limit, pct, colors);
+    }
     const icon = (key === 'session' || key === 'five_hour' || key === 'day') ? '⏱ ' : (key === 'week' || key === 'seven_day') ? '📅 ' : '⚡ ';
     const label = key === 'five_hour' || key === 'day' ? 'daily' : key === 'week' || key === 'seven_day' ? 'weekly' : key;
     const colorConfig = pct > 80 ? colors.rateCritical : pct > 50 ? colors.rateWarning : colors.rateHealthy;
     const reset = limit.resets_at ? ` ~${this.formatResetTime(limit.resets_at)}` : '';
     return { icon, label, value: `${pct}% used${reset}`, fg: colorConfig.fg, bg: colorConfig.bg };
+  }
+
+  private buildSpendLimitSegment(limit: RateLimit, pct: number, colors: SegmentColorMap): Segment {
+    const colorConfig = pct > 80 ? colors.rateCritical : pct > 50 ? colors.rateWarning : colors.rateHealthy;
+    const parts: string[] = [];
+    if (typeof limit.used_usd === 'number' && typeof limit.limit_usd === 'number') {
+      parts.push(`${this.formatUsd(limit.used_usd)}/${this.formatUsd(limit.limit_usd)}`);
+    }
+    parts.push(`${pct}%`);
+    if (limit.resets_at) {
+      parts.push(`resets ${this.formatSpendReset(limit.resets_at)}`);
+    }
+    return {
+      icon: StatusParser.CREDITS_ICON,
+      label: limit.period ?? StatusParser.SPEND_LABEL,
+      value: parts.join(` ${StatusParser.CTX_VALUE_SEPARATOR} `),
+      fg: colorConfig.fg,
+      bg: colorConfig.bg,
+    };
+  }
+
+  private formatUsd(amount: number): string {
+    return `$${amount.toLocaleString('en-US', {
+      minimumFractionDigits: StatusParser.DOLLAR_DECIMALS,
+      maximumFractionDigits: StatusParser.DOLLAR_DECIMALS,
+    })}`;
+  }
+
+  private formatSpendReset(resetsAt: number, nowSecs: number = Date.now() / 1000): string {
+    const days = Math.floor((resetsAt - nowSecs) / StatusParser.SECS_PER_DAY);
+    if (days < 1) {
+      return `in ${this.formatResetTime(resetsAt, nowSecs)}`;
+    }
+    return `in ${days} ${days === 1 ? 'day' : 'days'}`;
   }
 
   private formatResetTime(resetsAt: number, nowSecs: number = Date.now() / 1000): string {

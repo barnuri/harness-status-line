@@ -35,6 +35,7 @@ docs/
 - **Setup mode**: `--setup` flag or interactive TTY → run `SetupWizard` (writes Claude settings, Cursor `cli-config.json`, and Copilot CLI `settings.json`).
 - **Wrapping**: segments wrap to additional lines when total width exceeds `render_width_chars` (Cursor) or else `process.stdout.columns` / `COLUMNS`. Info is never truncated.
 - **Color coding**: context turns yellow >60%, red >80%; rate limits turn yellow <50% remaining, red <20%.
+- **Spend limit** (Enterprise/gateway): `rate_limits.spend_limit` renders as `💳 monthly: $19.93/$4,500.00 · 0% · resets in 21 days` (`in 2h5m` under 1 day). The `$X session` cost segment stays visible beside it. `SpendEnricher` records each Claude session's `cost.total_cost_usd` to `~/.claude/harness-status-line/spend/<YYYY-MM UTC>/<session_id>.json` and, when `spend/limit.json` holds `limit_usd`, shows used = max(API reading, sum of this month's sessions). The API reading is stdin `spend_limit` or `limit.json` `api: {month, used_usd}`. Resets on the 1st, 00:00 UTC.
 
 ## Running
 

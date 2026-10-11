@@ -9,6 +9,7 @@ import { ConfigManager } from './configManager.ts';
 import { ConfigCli } from './configCli.ts';
 import { CursorStatusEnricher } from './shared/cursorStatusEnricher.ts';
 import { CopilotQuotaEnricher } from './shared/copilotQuotaEnricher.ts';
+import { SpendEnricher } from './shared/spendEnricher.ts';
 
 class Application {
   async run(): Promise<void> {
@@ -39,7 +40,8 @@ class Application {
     const parser = new StatusParser();
     const parsed = parser.parse(raw);
     const cursorStatus = new CursorStatusEnricher().apply(parsed);
-    const status = new CopilotQuotaEnricher().apply(cursorStatus);
+    const copilotStatus = new CopilotQuotaEnricher().apply(cursorStatus);
+    const status = new SpendEnricher().apply(copilotStatus);
     const segments = parser.buildSegments(status, config);
 
     const payloadWidth = status.render_width_chars;

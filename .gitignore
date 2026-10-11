@@ -4,3 +4,4 @@ dist/
 .retrospect/
 .playwright-mcp/
 **/agent-spec
+.env
