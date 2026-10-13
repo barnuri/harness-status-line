@@ -9,13 +9,26 @@ import { ConfigManager } from './configManager.ts';
 import { ConfigCli } from './configCli.ts';
 import { CursorStatusEnricher } from './shared/cursorStatusEnricher.ts';
 import { CopilotQuotaEnricher } from './shared/copilotQuotaEnricher.ts';
+import { ClaudeUsageClient } from './shared/claudeUsageClient.ts';
+import { ClaudeUsageRefresher } from './shared/claudeUsageRefresher.ts';
 import { SpendEnricher } from './shared/spendEnricher.ts';
+import { SpendLedger } from './shared/spendLedger.ts';
 
 class Application {
   async run(): Promise<void> {
     const args = process.argv.slice(2);
 
     if (args.includes('--noop')) {
+      return;
+    }
+
+    if (args.includes(ClaudeUsageRefresher.COMMAND_FLAG)) {
+      const ledger = new SpendLedger();
+      try {
+        await new ClaudeUsageClient(undefined, ledger).refresh();
+      } finally {
+        ledger.releaseApiRefresh();
+      }
       return;
     }
 

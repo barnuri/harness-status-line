@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SpendLedger } from '../src/shared/spendLedger.ts';
 import { SpendEnricher } from '../src/shared/spendEnricher.ts';
+import { ClaudeUsageRefresher } from '../src/shared/claudeUsageRefresher.ts';
 
 describe('SpendEnricher', () => {
   const OCT = Date.UTC(2026, 9, 10, 12);
@@ -12,7 +13,9 @@ describe('SpendEnricher', () => {
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spend-enricher-'));
-    enricher = new SpendEnricher(new SpendLedger(dir));
+    const ledger = new SpendLedger(dir);
+    const refresher = { refreshInBackground: (): void => {} } as unknown as ClaudeUsageRefresher;
+    enricher = new SpendEnricher(ledger, refresher);
   });
 
   afterEach(() => {
@@ -95,5 +98,17 @@ describe('SpendEnricher', () => {
     const status = enricher.apply({ session_id: 'me', cost: { total_cost_usd: 5 }, rate_limits: { five_hour: { used_percentage: 3 } } }, OCT);
     expect(status.rate_limits?.['five_hour']?.used_percentage).toBe(3);
     expect(status.rate_limits?.['spend_limit']?.used_usd).toBe(5);
+  });
+
+  it('requests a live refresh only for a complete Claude payload', () => {
+    let refreshes = 0;
+    const refresher = {
+      refreshInBackground: (): void => { refreshes += 1; },
+    } as unknown as ClaudeUsageRefresher;
+    const isolated = new SpendEnricher(new SpendLedger(dir), refresher);
+    isolated.apply({ session_id: 'claude', cost: { total_cost_usd: 1 } }, OCT);
+    isolated.apply({ session_id: 'cursor', render_width_chars: 80, cost: { total_cost_usd: 1 } }, OCT);
+    isolated.apply({ session_id: 'missing-cost' }, OCT);
+    expect(refreshes).toBe(1);
   });
 });

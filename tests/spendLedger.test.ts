@@ -61,6 +61,29 @@ describe('SpendLedger', () => {
     expect(ledger.monthTotal(OCT)).toBe(0);
   });
 
+  it('writes API usage atomically and reports freshness for 60 seconds', () => {
+    ledger.writeApiLimit(4500, 523.54, OCT);
+    expect(ledger.readLimit()).toEqual({
+      limit_usd: 4500,
+      api: { month: '2026-10', used_usd: 523.54, captured_at: new Date(OCT).toISOString() },
+    });
+    expect(ledger.isApiFresh(OCT + 60_000)).toBe(true);
+    expect(ledger.isApiFresh(OCT + 60_001)).toBe(false);
+    expect(ledger.isApiFresh(NOV)).toBe(false);
+  });
+
+  it('allows one API refresh claim until the lock is released', () => {
+    expect(ledger.claimApiRefresh(OCT)).toBe(true);
+    expect(ledger.claimApiRefresh(OCT + 1)).toBe(false);
+    ledger.releaseApiRefresh();
+    expect(ledger.claimApiRefresh(OCT + 60_001)).toBe(true);
+  });
+
+  it('replaces an abandoned API refresh lock after the retry interval', () => {
+    expect(ledger.claimApiRefresh(OCT)).toBe(true);
+    expect(ledger.claimApiRefresh(OCT + 60_001)).toBe(true);
+  });
+
   it('computes the month key and next reset in UTC', () => {
     expect(ledger.monthKey(Date.UTC(2026, 11, 31, 23))).toBe('2026-12');
     expect(ledger.nextMonthStartSecs(Date.UTC(2026, 11, 31, 23))).toBe(Date.UTC(2027, 0, 1) / 1000);

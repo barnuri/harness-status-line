@@ -195,8 +195,9 @@ export interface SessionSpendEntry {
 
 export interface SpendLimitCache {
   readonly limit_usd?: number;
+  readonly refresh_attempted_at?: string;
   // Last spend reading from the Claude API for its month; the status line shows max(api, local sum).
-  readonly api?: { readonly month?: string; readonly used_usd?: number };
+  readonly api?: { readonly month?: string; readonly used_usd?: number; readonly captured_at?: string };
 }
 
 export interface UsageSnapshot {
