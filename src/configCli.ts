@@ -57,6 +57,7 @@ Keys:
   separatorStyle              powerline | spaces
   segments.folder             true | false
   segments.git                true | false
+  segments.ghx                true | false
   segments.slug               true | false
   segments.model              true | false
   segments.context            true | false
@@ -72,7 +73,7 @@ Keys:
   refreshInterval             <milliseconds>
   colors.<segment>.<bg|fg>    <R,G,B>  (e.g. 30,41,59)
 
-Segments: folder, git, slug, model, ctxHealthy, ctxWarning, ctxCritical,
+Segments: folder, git, ghx, slug, model, ctxHealthy, ctxWarning, ctxCritical,
           authSubscription, authApi, rateHealthy, rateWarning, rateCritical,
           effort, workflow, vim, worktree, autorun, yolo, lines
 

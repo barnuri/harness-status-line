@@ -91,6 +91,14 @@ export class StatusParser {
       }
     }
 
+    if (visibility.ghx) {
+      const cwd = status.cwd ?? status.workspace?.current_dir;
+      const profile = cwd ? this.detectGhxProfile(cwd) : null;
+      if (profile) {
+        segments.push({ icon: '👤 ', label: 'ghx', value: profile, fg: colors.ghx.fg, bg: colors.ghx.bg });
+      }
+    }
+
     const effort = visibility.effort ? this.extractEffort(status) : null;
 
     if (visibility.model) {
@@ -274,6 +282,21 @@ export class StatusParser {
       return null;
     }
     return branch;
+  }
+
+  protected detectGhxProfile(cwd: string): string | null {
+    try {
+      if (!Bun.which('ghx') || !fs.statSync(cwd).isDirectory()) {
+        return null;
+      }
+      const result = Bun.spawnSync(['ghx', 'ghx', 'current'], { cwd, stdout: 'pipe', stderr: 'pipe' });
+      if (result.exitCode !== 0 || !result.stdout) {
+        return null;
+      }
+      return result.stdout.toString('utf-8').trim() || null;
+    } catch {
+      return null;
+    }
   }
 
   private extractFolder(status: StatusJSON): string | null {

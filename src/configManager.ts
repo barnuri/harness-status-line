@@ -13,6 +13,7 @@ export class ConfigManager {
     segments: {
       folder: true,
       git: true,
+      ghx: true,
       model: true,
       context: true,
       auth: true,
@@ -29,6 +30,7 @@ export class ConfigManager {
     colors: {
       folder:           { bg: [30, 41, 59],   fg: [248, 250, 252] },
       git:              { bg: [47, 58, 97],   fg: [248, 250, 252] },
+      ghx:              { bg: [36, 41, 47],   fg: [248, 250, 252] },
       model:            { bg: [51, 65, 85],   fg: [248, 250, 252] },
       ctxHealthy:       { bg: [21, 128, 61],  fg: [248, 250, 252] },
       ctxWarning:       { bg: [180, 83, 9],   fg: [15, 23, 42]    },

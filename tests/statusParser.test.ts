@@ -208,6 +208,61 @@ class FakeParser extends StatusParser {
   }
 }
 
+class FakeGhxParser extends StatusParser {
+  constructor(private readonly fakeProfile: string | null) {
+    super();
+  }
+
+  protected override detectGitBranch(_cwd: string): string | null {
+    return 'main';
+  }
+
+  protected override detectGhxProfile(_cwd: string): string | null {
+    return this.fakeProfile;
+  }
+}
+
+describe('buildSegments() — ghx profile segment', () => {
+  it('shows the ghx profile for the cwd', () => {
+    const segs = new FakeGhxParser('work').buildSegments({ cwd: '/repo' }, cfg);
+    expect(segs.find(s => s.label === 'ghx')?.value).toBe('work');
+  });
+
+  it('places the ghx segment right after git', () => {
+    const segs = new FakeGhxParser('work').buildSegments({ cwd: '/repo' }, cfg);
+    const gitIndex = segs.findIndex(s => s.label === 'git');
+    expect(segs[gitIndex + 1]?.label).toBe('ghx');
+  });
+
+  it('omits the ghx segment when no profile matches', () => {
+    const segs = new FakeGhxParser(null).buildSegments({ cwd: '/repo' }, cfg);
+    expect(segs.find(s => s.label === 'ghx')).toBeUndefined();
+  });
+
+  it('omits the ghx segment when there is no cwd', () => {
+    const segs = new FakeGhxParser('work').buildSegments({}, cfg);
+    expect(segs.find(s => s.label === 'ghx')).toBeUndefined();
+  });
+
+  it('omits the ghx segment when disabled', () => {
+    const disabled = { ...cfg, segments: { ...cfg.segments, ghx: false } };
+    const segs = new FakeGhxParser('work').buildSegments({ cwd: '/repo' }, disabled);
+    expect(segs.find(s => s.label === 'ghx')).toBeUndefined();
+  });
+});
+
+describe('detectGhxProfile()', () => {
+  class ExposedParser extends StatusParser {
+    detect(cwd: string): string | null {
+      return this.detectGhxProfile(cwd);
+    }
+  }
+
+  it('returns null for a missing directory', () => {
+    expect(new ExposedParser().detect('/definitely/not/here')).toBeNull();
+  });
+});
+
 describe('buildSegments() — git branch segment', () => {
   it('includes git segment when branch is "main"', () => {
     const p = new FakeParser('main');

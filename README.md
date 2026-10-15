@@ -380,6 +380,7 @@ Then restart opencode — config is read once at startup.
 | folder | `api.state.path.directory` (falls back to `worktree`) |
 | slug | `~/.claude/session-slugs/<session id>` — the same file every stdin harness reads |
 | git branch | derived from the folder by the shared parser |
+| ghx profile | `ghx ghx current` run in the folder by the shared parser; hidden when [ghx](https://github.com/barnuri/ghx) is not installed or no profile matches |
 | model | `api.state.provider[…].models[modelID].name` for the newest assistant message |
 | context % / size | that message's `tokens` (`total`, else input + output + reasoning + cache) against the model's `limit.context` |
 | auth, rate limits | `~/.claude/usage-snapshot.json` |

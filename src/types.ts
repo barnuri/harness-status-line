@@ -220,6 +220,7 @@ export type SeparatorStyle = 'powerline' | 'spaces';
 export interface SegmentVisibility {
   readonly folder: boolean;
   readonly git: boolean;
+  readonly ghx: boolean;
   readonly model: boolean;
   readonly context: boolean;
   readonly auth: boolean;
@@ -237,6 +238,7 @@ export interface SegmentVisibility {
 export interface SegmentColorMap {
   readonly folder: SegmentColorConfig;
   readonly git: SegmentColorConfig;
+  readonly ghx: SegmentColorConfig;
   readonly model: SegmentColorConfig;
   readonly ctxHealthy: SegmentColorConfig;
   readonly ctxWarning: SegmentColorConfig;
