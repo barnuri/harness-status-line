@@ -250,10 +250,10 @@ export class CopilotQuotaWriter {
     }
 
     const reportedRemaining = this.#asNumber(snapshot.remainingPercentage);
-    const remainingPercentage = entitlement !== null && entitlement > 0 && used !== null
-      ? Math.max(0, Math.min(100, ((entitlement - used) / entitlement) * 100))
-      : reportedRemaining !== null && reportedRemaining >= 0 && reportedRemaining <= 100
-        ? reportedRemaining
+    const remainingPercentage = reportedRemaining !== null && reportedRemaining >= 0 && reportedRemaining <= 100
+      ? reportedRemaining
+      : entitlement !== null && entitlement > 0 && used !== null
+        ? Math.max(0, Math.min(100, ((entitlement - used) / entitlement) * 100))
         : null;
     if (remainingPercentage === null) {
       return null;
@@ -262,12 +262,18 @@ export class CopilotQuotaWriter {
     const resetDate = typeof snapshot.resetDate === "string" && !Number.isNaN(Date.parse(snapshot.resetDate))
       ? snapshot.resetDate
       : null;
+    const remaining = this.#asNumber(snapshot.remainingRequests);
 
     return {
       id,
+      unit: snapshot.tokenBasedBilling === true ? "aic" : "requests",
       ...(used !== null ? { used } : {}),
       ...(entitlement !== null ? { entitlement } : {}),
+      ...(remaining !== null ? { remaining } : {}),
       remainingPercentage,
+      ...(typeof snapshot.overagePermitted === "boolean"
+        ? { overagePermitted: snapshot.overagePermitted }
+        : {}),
       ...(resetDate !== null ? { resetDate } : {}),
     };
   }

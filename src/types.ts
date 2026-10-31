@@ -74,6 +74,8 @@ export interface ApiInfo {
   readonly base_url?: string;
 }
 
+export type PayloadKind = 'cursor' | 'copilot-cli' | 'claude-hub' | 'claude';
+
 export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface Effort {
@@ -104,11 +106,16 @@ export interface CreditBalance {
   readonly resets_at?: number;
 }
 
+export type CopilotQuotaUnit = 'aic' | 'requests';
+
 export interface CopilotQuotaEntry {
   readonly id: string;
+  readonly unit?: CopilotQuotaUnit;
   readonly used?: number;
   readonly entitlement?: number;
+  readonly remaining?: number;
   readonly remainingPercentage: number;
+  readonly overagePermitted?: boolean;
   readonly resetDate?: string;
 }
 
@@ -119,6 +126,17 @@ export interface CopilotQuotaState {
   readonly ghUpdatedAt?: number;
   readonly assistantUsageUpdatedAt?: number;
   readonly quotas: readonly CopilotQuotaEntry[];
+}
+
+// The concrete model llm-hub's copilot/auto picked for the session's latest turn.
+export interface LlmHubAuto {
+  readonly model: string;
+  readonly complexity: string | null;
+}
+
+// LlmHubClient returns null when the hub call failed; `decision: null` means the hub had no decision yet.
+export interface LlmHubDecisionLookup {
+  readonly decision: LlmHubAuto | null;
 }
 
 export interface StatusJSON {
@@ -146,6 +164,7 @@ export interface StatusJSON {
   readonly allow_all_enabled?: boolean;
   readonly ai_used?: { readonly total_nano_aiu?: number; readonly formatted?: string };
   readonly copilot_quota?: CopilotQuotaState;
+  readonly llm_hub_auto?: LlmHubAuto;
 }
 
 export interface SubagentTask {

@@ -9,10 +9,13 @@ import { ConfigManager } from './configManager.ts';
 import { ConfigCli } from './configCli.ts';
 import { CursorStatusEnricher } from './shared/cursorStatusEnricher.ts';
 import { CopilotQuotaEnricher } from './shared/copilotQuotaEnricher.ts';
+import { LlmHubEnricher } from './shared/llmHubEnricher.ts';
 import { ClaudeUsageClient } from './shared/claudeUsageClient.ts';
 import { ClaudeUsageRefresher } from './shared/claudeUsageRefresher.ts';
 import { SpendEnricher } from './shared/spendEnricher.ts';
 import { SpendLedger } from './shared/spendLedger.ts';
+import { PayloadClassifier } from './shared/payloadClassifier.ts';
+import type { StatusJSON } from './types.ts';
 
 class Application {
   async run(): Promise<void> {
@@ -52,9 +55,7 @@ class Application {
     }
     const parser = new StatusParser();
     const parsed = parser.parse(raw);
-    const cursorStatus = new CursorStatusEnricher().apply(parsed);
-    const copilotStatus = new CopilotQuotaEnricher().apply(cursorStatus);
-    const status = new SpendEnricher().apply(copilotStatus);
+    const status = await this.enrich(parsed);
     const segments = parser.buildSegments(status, config);
 
     const payloadWidth = status.render_width_chars;
@@ -77,6 +78,20 @@ class Application {
     }
     const envCols = parseInt(process.env['COLUMNS'] ?? '', 10);
     return isNaN(envCols) ? 120 : envCols;
+  }
+
+  // Each enricher builds stores and clients, so build only the one this harness needs.
+  private async enrich(status: StatusJSON): Promise<StatusJSON> {
+    switch (new PayloadClassifier().classify(status)) {
+      case 'cursor':
+        return new CursorStatusEnricher().apply(status);
+      case 'copilot-cli':
+        return new CopilotQuotaEnricher().apply(status);
+      case 'claude-hub':
+        return new LlmHubEnricher().apply(status);
+      case 'claude':
+        return new SpendEnricher().apply(status);
+    }
   }
 
   private async readStdin(): Promise<string> {

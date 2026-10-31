@@ -74,7 +74,9 @@ export class GhCopilotQuotaClient {
       const payload = JSON.parse(quotaResult.stdout);
       const premium = payload?.quota_snapshots?.premium_interactions;
       const entitlement = this.#asNumber(premium?.entitlement);
-      const used = this.#asNumber(premium?.credits_used);
+      const remaining = this.#asNumber(premium?.remaining);
+      const used = this.#asNumber(premium?.credits_used) ??
+        (entitlement !== null && remaining !== null ? entitlement - remaining : null);
       const remainingPercentage = this.#asNumber(premium?.percent_remaining);
       if (
         entitlement === null ||
@@ -89,7 +91,11 @@ export class GhCopilotQuotaClient {
         return { resolved: true, candidate: null };
       }
 
-      const resetDate = this.#normalizeResetDate(payload?.quota_reset_date);
+      const resetDate = this.#normalizeResetDate(
+        payload?.quota_reset_date_utc ?? payload?.quota_reset_date,
+      );
+      const tokenBasedBilling = premium?.token_based_billing;
+      const overagePermitted = premium?.overage_permitted;
       return {
         resolved: true,
         candidate: {
@@ -99,6 +105,9 @@ export class GhCopilotQuotaClient {
             entitlementRequests: entitlement,
             usedRequests: used,
             remainingPercentage,
+            ...(remaining !== null ? { remainingRequests: remaining } : {}),
+            ...(typeof tokenBasedBilling === "boolean" ? { tokenBasedBilling } : {}),
+            ...(typeof overagePermitted === "boolean" ? { overagePermitted } : {}),
             ...(resetDate !== null ? { resetDate } : {}),
           },
         },

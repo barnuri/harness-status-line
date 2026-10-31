@@ -1,4 +1,4 @@
-import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance, CopilotQuotaState, CopilotQuotaEntry } from './types.ts';
+import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance, CopilotQuotaState, CopilotQuotaEntry, LlmHubAuto } from './types.ts';
 import { formatTokenCount, formatTokenLimit, formatTokenPair } from './shared/tokenFormat.ts';
 import { resolveSessionSlug } from './shared/sessionSlug.ts';
 import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
@@ -16,6 +16,7 @@ export class StatusParser {
   private static readonly CONTEXT_SIZE_IN_NAME = /\b\d+(?:\.\d+)?\s*[kKmM]\b/;
   private static readonly MAX_MODE_SUFFIX = ' · max';
   private static readonly AUTO_MODEL_NAMES: ReadonlyArray<string> = ['auto', 'default'];
+  private static readonly LLM_HUB_AUTO_PREFIX = 'auto → ';
   private static readonly AUTORUN_LABEL = 'autorun';
   private static readonly AUTORUN_VALUE = 'on';
   private static readonly YOLO_LABEL = 'yolo';
@@ -36,13 +37,27 @@ export class StatusParser {
   private static readonly SECS_PER_DAY = 24 * 3600;
   private static readonly NANO_PER_AI_CREDIT = 1_000_000_000;
   private static readonly USD_PER_AI_CREDIT = 0.01;
+  // Fixed English layout ("Sun 1 Nov 02:00") to match the rest of the line; only the time zone varies.
+  private static readonly QUOTA_LOCALE = 'en-US';
 
   private readonly autoModelReader: CursorAutoModelReader;
   private readonly copilotEffortReader: CopilotEffortReader;
+  private readonly quotaResetFormat: Intl.DateTimeFormat;
+  private readonly quotaAmountFormat = new Intl.NumberFormat(StatusParser.QUOTA_LOCALE, { maximumFractionDigits: 0 });
 
-  constructor(autoModelReader?: CursorAutoModelReader, copilotEffortReader?: CopilotEffortReader) {
+  // timeZone is a test seam; undefined means the user's local zone.
+  constructor(autoModelReader?: CursorAutoModelReader, copilotEffortReader?: CopilotEffortReader, timeZone?: string) {
     this.autoModelReader = autoModelReader ?? new CursorAutoModelReader();
     this.copilotEffortReader = copilotEffortReader ?? new CopilotEffortReader();
+    this.quotaResetFormat = new Intl.DateTimeFormat(StatusParser.QUOTA_LOCALE, {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      ...(timeZone !== undefined ? { timeZone } : {}),
+    });
   }
 
   parse(raw: string): StatusJSON {
@@ -326,6 +341,7 @@ export class StatusParser {
   }
 
   private extractModel(status: StatusJSON, shownEffort: string | null): string | null {
+    if (status.llm_hub_auto) { return this.formatLlmHubAuto(status.llm_hub_auto); }
     const raw = status.model;
     if (!raw) { return null; }
     if (typeof raw === 'string') { return this.withResolvedAutoModel(raw, status); }
@@ -340,6 +356,14 @@ export class StatusParser {
       value = `${value}${StatusParser.MAX_MODE_SUFFIX}`;
     }
     return this.withCopilotContextSize(value, status, shownEffort);
+  }
+
+  // llm-hub ids are qualified ("copilot/claude-sonnet-5-5"); show only the bare model.
+  private formatLlmHubAuto(auto: LlmHubAuto): string {
+    const slash = auto.model.indexOf('/');
+    const model = slash === -1 ? auto.model : auto.model.slice(slash + 1);
+    const complexity = auto.complexity === null ? '' : ` (${auto.complexity})`;
+    return `${StatusParser.LLM_HUB_AUTO_PREFIX}${model}${complexity}`;
   }
 
   // Copilot's display_name embeds the effort (e.g. "claude-opus-5.5 · medium"); drop it when the 🧠 segment shows it.
@@ -503,10 +527,26 @@ export class StatusParser {
     return {
       icon: StatusParser.CREDITS_ICON,
       label: 'quota',
-      value: `${used}% used${reset ? ` · reset ${reset}` : ''}`,
+      value: [this.formatCopilotQuotaAmount(entry), `${used}% used`, reset ? `reset ${reset}` : null]
+        .filter((part): part is string => part !== null)
+        .join(' · '),
       fg: colorConfig.fg,
       bg: colorConfig.bg,
     };
+  }
+
+  // AIC values lag github.com billing slightly, hence the leading "~"; 100 AIC = $1.
+  private formatCopilotQuotaAmount(entry: CopilotQuotaEntry): string | null {
+    if (entry.used === undefined || entry.entitlement === undefined) {
+      return null;
+    }
+    const amounts = `${this.quotaAmountFormat.format(entry.used)}/${this.quotaAmountFormat.format(entry.entitlement)}`;
+    if (entry.unit === 'aic') {
+      const usd = (credits: number): string =>
+        `$${(credits * StatusParser.USD_PER_AI_CREDIT).toFixed(StatusParser.DOLLAR_DECIMALS)}`;
+      return `~${amounts} AIC (${usd(entry.used)}/${usd(entry.entitlement)})`;
+    }
+    return entry.unit === 'requests' ? `${amounts} req` : null;
   }
 
   private formatCopilotQuotaReset(entry: CopilotQuotaEntry): string | null {
@@ -517,7 +557,10 @@ export class StatusParser {
     if (Number.isNaN(resetMs)) {
       return null;
     }
-    return `in ${this.formatResetTime(resetMs / 1000)}`;
+    const parts = Object.fromEntries(
+      this.quotaResetFormat.formatToParts(resetMs).map((part) => [part.type, part.value]),
+    );
+    return `${parts['weekday']} ${parts['day']} ${parts['month']} ${parts['hour']}:${parts['minute']}`;
   }
 
   private creditsLabel(credits: CreditBalance): string {

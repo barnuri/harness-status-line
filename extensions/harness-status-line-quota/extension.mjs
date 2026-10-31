@@ -26,6 +26,7 @@ function summarizeSnapshots(snapshots) {
         usedRequests: snapshot?.usedRequests,
         entitlementRequests: snapshot?.entitlementRequests,
         remainingPercentage: snapshot?.remainingPercentage,
+        tokenBasedBilling: snapshot?.tokenBasedBilling,
       },
     ]),
   );

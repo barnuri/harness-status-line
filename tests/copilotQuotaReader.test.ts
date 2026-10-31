@@ -80,4 +80,48 @@ describe('CopilotQuotaReader', () => {
       { id: 'current', remainingPercentage: 15 },
     ]);
   });
+
+  it('parseState keeps the unit, remaining, and overage fields', () => {
+    const quota = {
+      id: 'premium_interactions',
+      unit: 'aic',
+      used: 12_626,
+      entitlement: 33_000,
+      remaining: 20_489,
+      remainingPercentage: 62,
+      overagePermitted: false,
+      resetDate: '2026-11-01T00:00:00Z',
+    };
+
+    expect(new CopilotQuotaReader(file).parseState(JSON.stringify({ updatedAt: 10_000, quotas: [quota] }))).toEqual({
+      updatedAt: 10_000,
+      quotas: [quota],
+    });
+  });
+
+  it('parseState drops an unknown unit and mistyped optional fields', () => {
+    const raw = JSON.stringify({
+      updatedAt: 10_000,
+      quotas: [{ id: 'premium_interactions', unit: 'tokens', remaining: '5', overagePermitted: 'yes', remainingPercentage: 40 }],
+    });
+
+    expect(new CopilotQuotaReader(file).parseState(raw)?.quotas).toEqual([
+      { id: 'premium_interactions', remainingPercentage: 40 },
+    ]);
+  });
+
+  it('parseState still parses the 2026-10-01 shape without a unit', () => {
+    const quota = {
+      id: 'premium_interactions',
+      used: 12_225,
+      entitlement: 10_000,
+      remainingPercentage: 0,
+      resetDate: '2026-11-01T00:00:00Z',
+    };
+
+    expect(new CopilotQuotaReader(file).parseState(JSON.stringify({ updatedAt: 10_000, quotas: [quota] }))).toEqual({
+      updatedAt: 10_000,
+      quotas: [quota],
+    });
+  });
 });

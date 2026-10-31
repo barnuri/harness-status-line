@@ -65,6 +65,85 @@ describe('GhCopilotQuotaClient', () => {
     });
   });
 
+  it('reads token-billed AI credit quota from the live copilot_internal/user shape', async () => {
+    const client = new GhCopilotQuotaClient(async (args: readonly string[]) => {
+      if (args[0] === 'auth' && args[1] === 'status') {
+        return {
+          success: true,
+          stdout: JSON.stringify({
+            hosts: { 'github.com': [{ state: 'success', login: 'business' }] },
+          }),
+        };
+      }
+      if (args[0] === 'auth' && args[1] === 'token') {
+        return { success: true, stdout: 'business-token\n' };
+      }
+      return {
+        success: true,
+        stdout: JSON.stringify({
+          quota_reset_date: '2026-11-01',
+          quota_reset_date_utc: '2026-11-01T00:00:00Z',
+          quota_snapshots: {
+            premium_interactions: {
+              credits_used: 12_626,
+              entitlement: 33_000,
+              remaining: 20_489,
+              quota_remaining: 20_489.9,
+              percent_remaining: 62.0,
+              overage_permitted: true,
+              token_based_billing: true,
+              unlimited: false,
+            },
+          },
+        }),
+      };
+    });
+
+    expect(await client.fetchSnapshot()).toEqual({
+      login: 'business',
+      snapshot: {
+        isUnlimitedEntitlement: false,
+        entitlementRequests: 33_000,
+        usedRequests: 12_626,
+        remainingPercentage: 62,
+        remainingRequests: 20_489,
+        tokenBasedBilling: true,
+        overagePermitted: true,
+        resetDate: '2026-11-01T00:00:00Z',
+      },
+    });
+  });
+
+  it('derives usage from remaining when credits_used is missing', async () => {
+    const client = new GhCopilotQuotaClient(async (args: readonly string[]) => {
+      if (args[0] === 'auth' && args[1] === 'status') {
+        return {
+          success: true,
+          stdout: JSON.stringify({
+            hosts: { 'github.com': [{ state: 'success', login: 'business' }] },
+          }),
+        };
+      }
+      if (args[0] === 'auth' && args[1] === 'token') {
+        return { success: true, stdout: 'business-token\n' };
+      }
+      return {
+        success: true,
+        stdout: JSON.stringify({
+          quota_snapshots: {
+            premium_interactions: { entitlement: 300, remaining: 180, percent_remaining: 60 },
+          },
+        }),
+      };
+    });
+
+    expect((await client.fetchSnapshot())?.snapshot).toMatchObject({
+      entitlementRequests: 300,
+      usedRequests: 120,
+      remainingRequests: 180,
+    });
+  });
+
   it('returns null when GitHub CLI authentication or quota responses are unavailable', async () => {
     const authFailure = new GhCopilotQuotaClient(async () => ({ success: false, stdout: '' }));
     expect(await authFailure.fetchSnapshot()).toBeNull();

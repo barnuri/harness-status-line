@@ -426,6 +426,24 @@ describe('buildSegments() — Cursor Auto model', () => {
   });
 });
 
+describe('buildSegments() — llm-hub Auto model', () => {
+  it('shows the model llm-hub Auto picked with its complexity', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'copilot/auto', display_name: 'copilot/auto' },
+      llm_hub_auto: { model: 'copilot/claude-sonnet-5-5', complexity: 'medium' },
+    }, cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('auto → claude-sonnet-5-5 (medium)');
+  });
+
+  it('omits the parentheses when the complexity is null', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'copilot/auto' },
+      llm_hub_auto: { model: 'copilot/claude-haiku-5-5', complexity: null },
+    }, cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('auto → claude-haiku-5-5');
+  });
+});
+
 // ────────────────────────────────────────────────────────
 // buildSegments() — effort segment
 // ────────────────────────────────────────────────────────
@@ -1442,19 +1460,68 @@ describe('buildSegments() — Copilot CLI payload', () => {
     expect(segs.find(s => s.label === 'cost')).toBeUndefined();
   });
 
-  it('shows used Copilot quota and its relative reset time', () => {
-    const resetDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000 + 1_000).toISOString();
-    const segs = parser.buildSegments(makeCopilotStatus({
+  it('shows used Copilot quota and its local reset time when the entry has no unit', () => {
+    const utcParser = new StatusParser(undefined, undefined, 'UTC');
+    const segs = utcParser.buildSegments(makeCopilotStatus({
       copilot_quota: {
         updatedAt: Date.now(),
         quotas: [
           { id: 'chat', remainingPercentage: 75 },
-          { id: 'premium_interactions', remainingPercentage: 1.625, resetDate },
+          { id: 'premium_interactions', remainingPercentage: 1.625, used: 9_837, entitlement: 10_000, resetDate: '2026-11-01T00:00:00Z' },
         ],
       },
     }), cfg);
 
-    expect(segs.find(s => s.label === 'quota')?.value).toBe('98.4% used · reset in 3d');
+    expect(segs.find(s => s.label === 'quota')?.value).toBe('98.4% used · reset Sun 1 Nov 00:00');
+  });
+
+  const liveAicQuota = (): StatusJSON['copilot_quota'] => ({
+    updatedAt: Date.now(),
+    quotas: [{
+      id: 'premium_interactions',
+      unit: 'aic',
+      used: 12_626,
+      entitlement: 33_000,
+      remaining: 20_489,
+      remainingPercentage: 62,
+      overagePermitted: false,
+      resetDate: '2026-11-01T00:00:00Z',
+    }],
+  });
+
+  it('shows approximate Copilot AIC used/limit with USD and the reset in UTC', () => {
+    const utcParser = new StatusParser(undefined, undefined, 'UTC');
+    const segs = utcParser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota() }), cfg);
+
+    expect(segs.find(s => s.label === 'quota')?.value)
+      .toBe('~12,626/33,000 AIC ($126.26/$330.00) · 38% used · reset Sun 1 Nov 00:00');
+  });
+
+  it('shows the Copilot AIC reset in the local time zone', () => {
+    const jerusalemParser = new StatusParser(undefined, undefined, 'Asia/Jerusalem');
+    const segs = jerusalemParser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota() }), cfg);
+
+    expect(segs.find(s => s.label === 'quota')?.value)
+      .toBe('~12,626/33,000 AIC ($126.26/$330.00) · 38% used · reset Sun 1 Nov 02:00');
+  });
+
+  it('shows Copilot request quota used/limit without the approximate marker', () => {
+    const utcParser = new StatusParser(undefined, undefined, 'UTC');
+    const segs = utcParser.buildSegments(makeCopilotStatus({
+      copilot_quota: {
+        updatedAt: Date.now(),
+        quotas: [{
+          id: 'premium_interactions',
+          unit: 'requests',
+          used: 120,
+          entitlement: 300,
+          remainingPercentage: 60,
+          resetDate: '2026-11-01T00:00:00Z',
+        }],
+      },
+    }), cfg);
+
+    expect(segs.find(s => s.label === 'quota')?.value).toBe('120/300 req · 40% used · reset Sun 1 Nov 00:00');
   });
 
   it('hides the Copilot quota when rate-limit segments are disabled', () => {

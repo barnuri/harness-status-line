@@ -24,7 +24,7 @@ export class CopilotQuotaReader {
       return null;
     }
 
-    const state = this.parse(raw);
+    const state = this.parseState(raw);
     if (!state || nowMs - state.updatedAt > this.maxAgeMs || state.updatedAt > nowMs) {
       return null;
     }
@@ -46,7 +46,7 @@ export class CopilotQuotaReader {
     }
   }
 
-  private parse(raw: string): CopilotQuotaState | null {
+  parseState(raw: string): CopilotQuotaState | null {
     try {
       const parsed: unknown = JSON.parse(raw);
       if (!this.isRecord(parsed) || !this.isFiniteNumber(parsed['updatedAt']) || !Array.isArray(parsed['quotas'])) {
@@ -99,13 +99,19 @@ export class CopilotQuotaReader {
       return null;
     }
 
+    const unit = value['unit'] === 'aic' || value['unit'] === 'requests' ? value['unit'] : undefined;
     const used = this.isFiniteNumber(value['used']) ? value['used'] : undefined;
     const entitlement = this.isFiniteNumber(value['entitlement']) ? value['entitlement'] : undefined;
+    const remaining = this.isFiniteNumber(value['remaining']) ? value['remaining'] : undefined;
+    const overagePermitted = typeof value['overagePermitted'] === 'boolean' ? value['overagePermitted'] : undefined;
     return {
       id,
+      ...(unit !== undefined ? { unit } : {}),
       remainingPercentage,
       ...(used !== undefined ? { used } : {}),
       ...(entitlement !== undefined ? { entitlement } : {}),
+      ...(remaining !== undefined ? { remaining } : {}),
+      ...(overagePermitted !== undefined ? { overagePermitted } : {}),
       ...(typeof resetDate === 'string' ? { resetDate } : {}),
     };
   }
