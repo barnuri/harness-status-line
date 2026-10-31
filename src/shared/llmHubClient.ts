@@ -61,7 +61,8 @@ export class LlmHubClient {
         return null;
       }
       const complexity = typeof latest['complexity'] === 'string' ? latest['complexity'] : null;
-      return { decision: { model: latest['model'], complexity } };
+      const tier = typeof latest['tier'] === 'string' && latest['tier'].length > 0 ? latest['tier'] : null;
+      return { decision: { model: latest['model'], complexity, tier } };
     } catch (err) {
       if (err instanceof Error) {
         return null;

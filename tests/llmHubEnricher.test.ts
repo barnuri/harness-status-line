@@ -40,7 +40,7 @@ describe('LlmHubEnricher', () => {
           decisionCalls += 1;
           return failing
             ? new Response('down', { status: 503 })
-            : Response.json({ decisions: [{ model: 'copilot/claude-sonnet-5-5', complexity: 'medium' }] });
+            : Response.json({ decisions: [{ model: 'copilot/claude-sonnet-5-5', complexity: 'medium', tier: 'fast' }] });
         }
         if (url.pathname === '/api/copilot/usage') {
           usageCalls += 1;
@@ -67,13 +67,20 @@ describe('LlmHubEnricher', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('leaves non-hub and non-Copilot models untouched', async () => {
-    const plain: StatusJSON = { session_id: 'sess-1', model: { id: 'claude-sonnet-4-6' } };
+  it('leaves non-Copilot hub profiles untouched', async () => {
     const otherProfile: StatusJSON = { session_id: 'sess-1', model: 'openai/auto' };
 
-    expect(await enricher().apply(plain, NOW)).toBe(plain);
     expect(await enricher().apply(otherProfile, NOW)).toBe(otherProfile);
     expect(decisionCalls + usageCalls).toBe(0);
+  });
+
+  it('treats a bare model id on a hub base URL as the Copilot profile', async () => {
+    const alias: StatusJSON = { session_id: 'sess-1', model: { id: 'claude-sonnet-4-6' } };
+
+    const result = await enricher().apply(alias, NOW);
+
+    expect(result.copilot_quota?.quotas[0]?.used).toBe(12_626);
+    expect(decisionCalls).toBe(0);
   });
 
   it('leaves the status untouched without a hub base URL', async () => {
@@ -84,8 +91,23 @@ describe('LlmHubEnricher', () => {
   it('sets the Auto pick and the hub quota for copilot/auto with a session', async () => {
     const result = await enricher().apply(autoStatus(), NOW);
 
-    expect(result.llm_hub_auto).toEqual({ model: 'copilot/claude-sonnet-5-5', complexity: 'medium' });
+    expect(result.llm_hub_auto).toEqual({ model: 'copilot/claude-sonnet-5-5', complexity: 'medium', tier: 'fast' });
     expect(result.copilot_quota?.quotas[0]?.used).toBe(12_626);
+  });
+
+  it('sets the Auto pick for a tiered copilot/auto-<tier> model', async () => {
+    const result = await enricher().apply(autoStatus({ model: { id: 'copilot/auto-fast' } }), NOW);
+
+    expect(result.llm_hub_auto).toEqual({ model: 'copilot/claude-sonnet-5-5', complexity: 'medium', tier: 'fast' });
+  });
+
+  it('keeps the tier in the stored decision used while the hub is down', async () => {
+    await enricher().apply(autoStatus(), NOW);
+    failing = true;
+
+    const failed = await enricher().apply(autoStatus(), NOW + 61_000);
+
+    expect(failed.llm_hub_auto?.tier).toBe('fast');
   });
 
   it('falls back to api.base_url when ANTHROPIC_BASE_URL is unset', async () => {
@@ -101,11 +123,11 @@ describe('LlmHubEnricher', () => {
     expect(decisionCalls).toBe(0);
   });
 
-  it('does not add the hub quota when rate_limits are present', async () => {
+  it('replaces Anthropic rate_limits with the hub quota in a hub session', async () => {
     const result = await enricher().apply(autoStatus({ rate_limits: { session: { used_percentage: 10 } } }), NOW);
 
-    expect(result.copilot_quota).toBeUndefined();
-    expect(usageCalls).toBe(0);
+    expect(result.copilot_quota?.quotas[0]?.used).toBe(12_626);
+    expect(result.rate_limits).toBeUndefined();
   });
 
   it('serves the stored usage inside 60 s and refreshes after', async () => {

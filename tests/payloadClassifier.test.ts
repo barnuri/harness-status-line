@@ -3,7 +3,7 @@ import { PayloadClassifier } from '../src/shared/payloadClassifier.ts';
 import type { StatusJSON } from '../src/types.ts';
 
 describe('PayloadClassifier', () => {
-  const classifier = new PayloadClassifier();
+  const classifier = new PayloadClassifier({});
   const classify = (status: StatusJSON): string => classifier.classify(status);
 
   it('classifies a Cursor payload by its render width', () => {
@@ -24,5 +24,15 @@ describe('PayloadClassifier', () => {
 
   it('classifies an Anthropic model id as claude', () => {
     expect(classify({ model: { id: 'claude-opus-5-5', display_name: 'Opus 5.5' } } as StatusJSON)).toBe('claude');
+  });
+
+  it('classifies a bare Claude id as claude-hub when ANTHROPIC_BASE_URL points at a gateway', () => {
+    const hub = new PayloadClassifier({ ANTHROPIC_BASE_URL: 'http://localhost:8888' });
+    expect(hub.classify({ model: { id: 'claude-opus-5-5', display_name: 'Opus 5.5' } } as StatusJSON)).toBe('claude-hub');
+  });
+
+  it('keeps claude when ANTHROPIC_BASE_URL is Anthropic itself', () => {
+    const direct = new PayloadClassifier({ ANTHROPIC_BASE_URL: 'https://api.anthropic.com' });
+    expect(direct.classify({ model: { id: 'claude-opus-5-5', display_name: 'Opus 5.5' } } as StatusJSON)).toBe('claude');
   });
 });

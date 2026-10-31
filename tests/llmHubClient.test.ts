@@ -38,7 +38,7 @@ describe('LlmHubClient', () => {
           }
           const decisions = session === 'empty'
             ? []
-            : [{ ts_ms: 1, session, model: 'copilot/claude-sonnet-5-5', auto_pick: 'copilot/claude-haiku-5-5', complexity: 'medium', turn: 'routed' }];
+            : [{ ts_ms: 1, session, model: 'copilot/claude-sonnet-5-5', auto_pick: 'copilot/claude-haiku-5-5', complexity: 'medium', tier: 'intelligence', turn: 'routed' }];
           return Response.json({ decisions });
         }
         if (url.pathname === '/api/copilot/usage' && url.searchParams.get('profile') === 'copilot') {
@@ -57,7 +57,7 @@ describe('LlmHubClient', () => {
   it('parses the latest decision and sends the bearer key', async () => {
     const lookup = await new LlmHubClient(baseUrl, 'hub-key').fetchDecision('abc');
 
-    expect(lookup).toEqual({ decision: { model: 'copilot/claude-sonnet-5-5', complexity: 'medium' } });
+    expect(lookup).toEqual({ decision: { model: 'copilot/claude-sonnet-5-5', complexity: 'medium', tier: 'intelligence' } });
     expect(seenAuth.at(-1)).toBe('Bearer hub-key');
     expect(seenSearch.at(-1)).toBe('?session=abc&limit=1');
   });

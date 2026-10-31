@@ -1,12 +1,13 @@
 import type { CopilotQuotaState, LlmHubAuto, StatusJSON } from '../types.ts';
 import { LlmHubClient } from './llmHubClient.ts';
 import { LlmHubStore } from './llmHubStore.ts';
+import { PayloadClassifier } from './payloadClassifier.ts';
 
 // Claude Code on llm-hub's copilot/* models: show Auto's pick and the Copilot quota from the hub.
 export class LlmHubEnricher {
-  private static readonly HUB_MODEL = /^[^/\s]+\/[^/\s]+$/;
   private static readonly COPILOT_PROFILE = 'copilot';
-  private static readonly AUTO_MODEL = 'auto';
+  // llm-hub names Auto "<profile>/auto" (balance) or "<profile>/auto-<tier>".
+  private static readonly AUTO_MODEL = /^auto(?:-[a-z]+)?$/;
 
   private readonly env: Readonly<Record<string, string | undefined>>;
   private readonly storeDir: string | undefined;
@@ -19,11 +20,13 @@ export class LlmHubEnricher {
   }
 
   async apply(status: StatusJSON, nowMs: number = Date.now()): Promise<StatusJSON> {
-    const modelId = this.extractHubModelId(status);
-    const baseUrl = this.env['ANTHROPIC_BASE_URL'] || status.api?.base_url;
-    if (modelId === null || !baseUrl) {
+    const classifier = new PayloadClassifier(this.env);
+    const baseUrl = classifier.gatewayBaseUrl(status);
+    if (!baseUrl) {
       return status;
     }
+    // An alias such as `opus` can reach the status line as a bare id; the hub's default Copilot profile serves it.
+    const modelId = classifier.hubModelId(status) ?? `${LlmHubEnricher.COPILOT_PROFILE}/`;
     const [profile = '', bareModel = ''] = modelId.split('/');
     if (profile !== LlmHubEnricher.COPILOT_PROFILE) {
       return status;
@@ -32,26 +35,18 @@ export class LlmHubEnricher {
     const client = new LlmHubClient(baseUrl, this.env['ANTHROPIC_AUTH_TOKEN'], this.timeoutMs);
     const store = new LlmHubStore(client.baseUrl, this.storeDir);
     let result = status;
-    if (bareModel === LlmHubEnricher.AUTO_MODEL && status.session_id) {
+    if (LlmHubEnricher.AUTO_MODEL.test(bareModel) && status.session_id) {
       const auto = await this.resolveDecision(client, store, status.session_id, nowMs);
       result = auto ? { ...result, llm_hub_auto: auto } : result;
     }
-    if (!status.rate_limits && !status.copilot_quota) {
+    if (!status.copilot_quota) {
       const quota = await this.resolveUsage(client, store, profile, nowMs);
-      result = quota ? { ...result, copilot_quota: quota } : result;
+      // Rate limits in a hub session describe the Anthropic login, not the Copilot seat that serves it.
+      result = quota ? { ...result, copilot_quota: quota, rate_limits: undefined } : result;
     }
     return result;
   }
 
-  // Claude Code may carry the hub id in model.id or display_name, so take the first that looks like one.
-  private extractHubModelId(status: StatusJSON): string | null {
-    const raw = status.model;
-    const candidates = typeof raw === 'string' ? [raw] : [raw?.id, raw?.display_name];
-    const match = candidates.find(
-      (candidate): candidate is string => typeof candidate === 'string' && LlmHubEnricher.HUB_MODEL.test(candidate),
-    );
-    return match ?? null;
-  }
 
   private async resolveDecision(
     client: LlmHubClient,

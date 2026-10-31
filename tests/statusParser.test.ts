@@ -427,20 +427,28 @@ describe('buildSegments() — Cursor Auto model', () => {
 });
 
 describe('buildSegments() — llm-hub Auto model', () => {
-  it('shows the model llm-hub Auto picked with its complexity', () => {
+  it('shows the capitalized Auto tier, the model it picked, and its complexity', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'copilot/auto-intelligence', display_name: 'copilot/auto-intelligence' },
+      llm_hub_auto: { model: 'copilot/gpt-6.1-sol', complexity: 'medium', tier: 'intelligence' },
+    }, cfg);
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto (Intelligence) → gpt-6.1-sol (medium)');
+  });
+
+  it('falls back to "Auto →" when the hub reports no tier', () => {
     const segs = parser.buildSegments({
       model: { id: 'copilot/auto', display_name: 'copilot/auto' },
-      llm_hub_auto: { model: 'copilot/claude-sonnet-5-5', complexity: 'medium' },
+      llm_hub_auto: { model: 'copilot/claude-sonnet-5-5', complexity: 'medium', tier: null },
     }, cfg);
     expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto → claude-sonnet-5-5 (medium)');
   });
 
-  it('omits the parentheses when the complexity is null', () => {
+  it('omits the complexity parentheses when the complexity is null', () => {
     const segs = parser.buildSegments({
       model: { id: 'copilot/auto' },
-      llm_hub_auto: { model: 'copilot/claude-haiku-5-5', complexity: null },
+      llm_hub_auto: { model: 'copilot/claude-haiku-5-5', complexity: null, tier: 'balance' },
     }, cfg);
-    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto → claude-haiku-5-5');
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto (Balance) → claude-haiku-5-5');
   });
 });
 

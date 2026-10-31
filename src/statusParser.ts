@@ -16,7 +16,8 @@ export class StatusParser {
   private static readonly CONTEXT_SIZE_IN_NAME = /\b\d+(?:\.\d+)?\s*[kKmM]\b/;
   private static readonly MAX_MODE_SUFFIX = ' · max';
   private static readonly AUTO_MODEL_NAMES: ReadonlyArray<string> = ['auto', 'default'];
-  private static readonly LLM_HUB_AUTO_PREFIX = 'Auto → ';
+  private static readonly LLM_HUB_AUTO_LABEL = 'Auto';
+  private static readonly LLM_HUB_AUTO_ARROW = ' → ';
   private static readonly AUTORUN_LABEL = 'autorun';
   private static readonly AUTORUN_VALUE = 'on';
   private static readonly YOLO_LABEL = 'yolo';
@@ -358,12 +359,13 @@ export class StatusParser {
     return this.withCopilotContextSize(value, status, shownEffort);
   }
 
-  // llm-hub ids are qualified ("copilot/claude-sonnet-5-5"); show only the bare model.
+  // llm-hub ids are qualified ("copilot/claude-sonnet-5-5"); show only the bare model, e.g. "Auto (Intelligence) → gpt-6.1-sol (medium)".
   private formatLlmHubAuto(auto: LlmHubAuto): string {
     const slash = auto.model.indexOf('/');
     const model = slash === -1 ? auto.model : auto.model.slice(slash + 1);
+    const tier = auto.tier === null ? '' : ` (${auto.tier.charAt(0).toUpperCase()}${auto.tier.slice(1)})`;
     const complexity = auto.complexity === null ? '' : ` (${auto.complexity})`;
-    return `${StatusParser.LLM_HUB_AUTO_PREFIX}${model}${complexity}`;
+    return `${StatusParser.LLM_HUB_AUTO_LABEL}${tier}${StatusParser.LLM_HUB_AUTO_ARROW}${model}${complexity}`;
   }
 
   // Copilot's display_name embeds the effort (e.g. "claude-opus-5.5 · medium"); drop it when the 🧠 segment shows it.

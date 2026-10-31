@@ -128,10 +128,11 @@ export interface CopilotQuotaState {
   readonly quotas: readonly CopilotQuotaEntry[];
 }
 
-// The concrete model llm-hub's copilot/auto picked for the session's latest turn.
+// The concrete model llm-hub's copilot/auto picked for the session's latest turn, and the Auto tier that picked it.
 export interface LlmHubAuto {
   readonly model: string;
   readonly complexity: string | null;
+  readonly tier: string | null;
 }
 
 // LlmHubClient returns null when the hub call failed; `decision: null` means the hub had no decision yet.

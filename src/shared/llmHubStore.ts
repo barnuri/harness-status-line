@@ -60,13 +60,14 @@ export class LlmHubStore {
       return null;
     }
     const complexity = typeof decision['complexity'] === 'string' ? decision['complexity'] : null;
-    return { model: decision['model'], complexity };
+    const tier = typeof decision['tier'] === 'string' && decision['tier'].length > 0 ? decision['tier'] : null;
+    return { model: decision['model'], complexity, tier };
   }
 
   writeDecision(session: string, decision: LlmHubAuto, nowMs: number): void {
     const data = this.read();
     const stored = data.decisions[session]?.decision;
-    if (stored?.model === decision.model && stored.complexity === decision.complexity) {
+    if (stored?.model === decision.model && stored.complexity === decision.complexity && stored.tier === decision.tier) {
       return;
     }
     const kept = Object.entries(data.decisions)
