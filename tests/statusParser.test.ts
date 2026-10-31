@@ -432,7 +432,7 @@ describe('buildSegments() — llm-hub Auto model', () => {
       model: { id: 'copilot/auto', display_name: 'copilot/auto' },
       llm_hub_auto: { model: 'copilot/claude-sonnet-5-5', complexity: 'medium' },
     }, cfg);
-    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('auto → claude-sonnet-5-5 (medium)');
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto → claude-sonnet-5-5 (medium)');
   });
 
   it('omits the parentheses when the complexity is null', () => {
@@ -440,7 +440,7 @@ describe('buildSegments() — llm-hub Auto model', () => {
       model: { id: 'copilot/auto' },
       llm_hub_auto: { model: 'copilot/claude-haiku-5-5', complexity: null },
     }, cfg);
-    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('auto → claude-haiku-5-5');
+    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto → claude-haiku-5-5');
   });
 });
 

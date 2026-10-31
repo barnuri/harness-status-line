@@ -16,7 +16,7 @@ export class StatusParser {
   private static readonly CONTEXT_SIZE_IN_NAME = /\b\d+(?:\.\d+)?\s*[kKmM]\b/;
   private static readonly MAX_MODE_SUFFIX = ' · max';
   private static readonly AUTO_MODEL_NAMES: ReadonlyArray<string> = ['auto', 'default'];
-  private static readonly LLM_HUB_AUTO_PREFIX = 'auto → ';
+  private static readonly LLM_HUB_AUTO_PREFIX = 'Auto → ';
   private static readonly AUTORUN_LABEL = 'autorun';
   private static readonly AUTORUN_VALUE = 'on';
   private static readonly YOLO_LABEL = 'yolo';
