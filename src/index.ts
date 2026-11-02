@@ -11,6 +11,7 @@ import { ClaudeUsageClient } from './shared/claudeUsageClient.ts';
 import { ClaudeUsageRefresher } from './shared/claudeUsageRefresher.ts';
 import { SpendLedger } from './shared/spendLedger.ts';
 import { PayloadEnricher } from './shared/payloadEnricher.ts';
+import { TerminalWidthReader } from './shared/terminalWidthReader.ts';
 
 class Application {
   async run(): Promise<void> {
@@ -72,7 +73,11 @@ class Application {
       return process.stdout.columns;
     }
     const envCols = parseInt(process.env['COLUMNS'] ?? '', 10);
-    return isNaN(envCols) ? 120 : envCols;
+    if (!isNaN(envCols)) {
+      return envCols;
+    }
+    const ttyCols = new TerminalWidthReader().read();
+    return ttyCols ?? 120;
   }
 
   private async readStdin(): Promise<string> {
