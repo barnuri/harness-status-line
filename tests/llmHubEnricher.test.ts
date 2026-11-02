@@ -20,12 +20,32 @@ describe('LlmHubEnricher', () => {
   let failing = false;
   let decisionCalls = 0;
   let usageCalls = 0;
+  let smartCalls = 0;
+  let smartBySession: Record<string, Record<string, unknown>> = {};
   let dir: string;
 
+  const smartBody = (session: string): Record<string, unknown> => ({
+    session,
+    selection: {
+      main: { model: 'copilot/claude-sonnet-5-5', tier: 'balance', role: 'implement', confirmed_effort: 'low' },
+      active: [],
+      state: 'completed',
+      age_ms: 0,
+      stale: false,
+    },
+  });
+  const withMain = (session: string, main: Record<string, unknown>, active: unknown[] = []): Record<string, unknown> => ({
+    session,
+    selection: { main, active, state: 'completed', age_ms: 0, stale: false },
+  });
   const autoStatus = (overrides: Partial<StatusJSON> = {}): StatusJSON => ({
     session_id: 'sess-1',
     model: { id: 'copilot/auto', display_name: 'copilot/auto' },
     ...overrides,
+  });
+  const smartStatus = (session = 'sess-1'): StatusJSON => ({
+    session_id: session,
+    model: { id: 'hub/smart-auto-balance', display_name: 'hub/smart-auto-balance' },
   });
   const enricher = (env: Record<string, string | undefined> = { ANTHROPIC_BASE_URL: baseUrl }): LlmHubEnricher =>
     new LlmHubEnricher(env, dir);
@@ -46,6 +66,20 @@ describe('LlmHubEnricher', () => {
           usageCalls += 1;
           return failing ? new Response('down', { status: 503 }) : Response.json(usageBody);
         }
+        if (url.pathname === '/api/smart-auto/current') {
+          smartCalls += 1;
+          const session = url.searchParams.get('session') ?? '';
+          return failing ? new Response('down', { status: 503 }) : Response.json(smartBySession[session] ?? smartBody(session));
+        }
+        if (url.pathname === '/v1/models') {
+          return Response.json({
+            data: [
+              { id: 'copilot/claude-sonnet-5-5[1m]', context_window: 1_000_000 },
+              { id: 'copilot/gpt-6.1-sol', context_window: 922_000 },
+              { id: 'copilot/model-a', context_window: 64_000 },
+            ],
+          });
+        }
         return new Response('not found', { status: 404 });
       },
     });
@@ -61,6 +95,8 @@ describe('LlmHubEnricher', () => {
     failing = false;
     decisionCalls = 0;
     usageCalls = 0;
+    smartCalls = 0;
+    smartBySession = {};
   });
 
   afterEach(() => {
@@ -91,14 +127,14 @@ describe('LlmHubEnricher', () => {
   it('sets the Auto pick and the hub quota for copilot/auto with a session', async () => {
     const result = await enricher().apply(autoStatus(), NOW);
 
-    expect(result.llm_hub_auto).toEqual({ model: 'copilot/claude-sonnet-5-5', complexity: 'medium', tier: 'fast' });
+    expect(result.llm_hub_auto).toEqual({ model: 'copilot/claude-sonnet-5-5', complexity: 'medium', tier: 'fast', mode: 'auto' });
     expect(result.copilot_quota?.quotas[0]?.used).toBe(12_626);
   });
 
   it('sets the Auto pick for a tiered copilot/auto-<tier> model', async () => {
     const result = await enricher().apply(autoStatus({ model: { id: 'copilot/auto-fast' } }), NOW);
 
-    expect(result.llm_hub_auto).toEqual({ model: 'copilot/claude-sonnet-5-5', complexity: 'medium', tier: 'fast' });
+    expect(result.llm_hub_auto).toEqual({ model: 'copilot/claude-sonnet-5-5', complexity: 'medium', tier: 'fast', mode: 'auto' });
   });
 
   it('keeps the tier in the stored decision used while the hub is down', async () => {
@@ -164,5 +200,98 @@ describe('LlmHubEnricher', () => {
 
     const result = await enricher().apply(autoStatus(), Date.parse('2026-11-01T00:00:01Z'));
     expect(result.copilot_quota).toBeUndefined();
+  });
+
+  it('sets the Smart Auto selection for hub/smart-auto-* and reports no Copilot quota', async () => {
+    smartBySession['sess-1'] = withMain(
+      'sess-1',
+      { model: 'copilot/model-a', tier: 'balance', role: 'implement', confirmed_effort: 'low' },
+      [{ stage: 'solver', model: 'copilot/model-a' }, { stage: 'reviewer', model: 'copilot/model-b', confirmed_effort: 'high' }],
+    );
+
+    const result = await enricher().apply(smartStatus(), NOW);
+
+    expect(result.llm_hub_auto).toMatchObject({
+      model: 'copilot/model-a',
+      mode: 'smart-auto',
+      effort: 'low',
+      tier: 'balance',
+      stale: false,
+      ageMs: 0,
+      reviewers: [{ model: 'copilot/model-b', effort: 'high' }],
+    });
+    expect(result.copilot_quota).toBeUndefined();
+    expect(usageCalls).toBe(0);
+    expect(smartCalls).toBe(1);
+  });
+
+  it('leaves other hub models untouched', async () => {
+    const other: StatusJSON = { session_id: 'sess-1', model: { id: 'hub/claude-sonnet-5-5' } };
+
+    expect(await enricher().apply(other, NOW)).toBe(other);
+    expect(smartCalls).toBe(0);
+  });
+
+  it('reports a selecting hub with no main model as selecting, not as a failure', async () => {
+    smartBySession['sess-1'] = { session: 'sess-1', selection: { main: null, active: [], state: 'selected', age_ms: 0, stale: false } };
+
+    const result = await enricher().apply(smartStatus(), NOW);
+
+    expect(result.llm_hub_auto).toMatchObject({ model: '', state: 'selected', mode: 'smart-auto' });
+  });
+
+  it('shows no Smart Auto selection when the hub is down and nothing was stored', async () => {
+    failing = true;
+
+    const result = await enricher().apply(smartStatus(), NOW);
+
+    expect(result.llm_hub_auto).toBeUndefined();
+  });
+
+  it('shows the last-known Smart Auto selection with its age, marked stale after 60 s', async () => {
+    await enricher().apply(smartStatus(), NOW);
+    failing = true;
+
+    const recent = await enricher().apply(smartStatus(), NOW + 30_000);
+    expect(recent.llm_hub_auto).toMatchObject({ model: 'copilot/claude-sonnet-5-5', ageMs: 30_000, stale: false });
+
+    const old = await enricher().apply(smartStatus(), NOW + 61_000);
+    expect(old.llm_hub_auto).toMatchObject({ model: 'copilot/claude-sonnet-5-5', ageMs: 61_000, stale: true });
+  });
+
+  it('takes the context window from the hub for the chosen model, for Auto and Smart Auto alike', async () => {
+    smartBySession['sess-ctx'] = withMain('sess-ctx', { model: 'copilot/model-a', confirmed_effort: 'low' });
+    const payload = {
+      ...smartStatus('sess-ctx'),
+      context_window: { context_window_size: 200_000, current_context_tokens: 1_000, current_context_used_percentage: 1 },
+    } as StatusJSON;
+
+    const result = await enricher().apply(payload, NOW);
+
+    expect(result.context_window?.context_window_size).toBe(64_000);
+  });
+
+  it('shows the [1m] suffix on the chosen model when the hub serves it with a 1M window', async () => {
+    smartBySession['sess-1m'] = withMain('sess-1m', { model: 'copilot/claude-sonnet-5-5', confirmed_effort: 'high' });
+    const payload = { ...smartStatus('sess-1m'), context_window: { context_window_size: 200_000, current_context_tokens: 1_000, current_context_used_percentage: 1 } } as StatusJSON;
+
+    const result = await enricher().apply(payload, NOW);
+
+    expect(result.llm_hub_auto?.model).toBe('copilot/claude-sonnet-5-5[1m]');
+    expect(result.context_window?.context_window_size).toBe(1_000_000);
+  });
+
+  it('keeps the selections of concurrent sessions apart', async () => {
+    smartBySession['sess-a'] = withMain('sess-a', { model: 'copilot/model-a', confirmed_effort: 'low' });
+    smartBySession['sess-b'] = withMain('sess-b', { model: 'copilot/model-b', confirmed_effort: 'high' });
+    await enricher().apply(smartStatus('sess-a'), NOW);
+    await enricher().apply(smartStatus('sess-b'), NOW + 1_000);
+    failing = true;
+
+    const a = await enricher().apply(smartStatus('sess-a'), NOW + 2_000);
+    const b = await enricher().apply(smartStatus('sess-b'), NOW + 2_000);
+
+    expect(a.llm_hub_auto).toMatchObject({ model: 'copilot/model-a', effort: 'low' });
+    expect(b.llm_hub_auto).toMatchObject({ model: 'copilot/model-b', effort: 'high' });
   });
 });

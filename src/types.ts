@@ -128,11 +128,36 @@ export interface CopilotQuotaState {
   readonly quotas: readonly CopilotQuotaEntry[];
 }
 
-// The concrete model llm-hub's copilot/auto picked for the session's latest turn, and the Auto tier that picked it.
+// Which llm-hub router made the pick: Copilot Auto or the hub-wide Smart Auto.
+export type LlmHubMode = 'auto' | 'smart-auto';
+
+// The lifecycle of a Smart Auto selection as the hub reports it.
+export type LlmHubState = 'selected' | 'started' | 'completed' | 'rejected' | 'cancelled';
+
+// A helper stage (judge, critic or repair) that is active next to the main model.
+export interface LlmHubReviewer {
+  readonly model: string;
+  readonly effort?: string;
+}
+
+// The concrete model llm-hub picked for the session's latest turn, and the tier that picked it.
+// Smart Auto adds the effective effort, role, state and helper stages; `stale` marks last-known data.
 export interface LlmHubAuto {
   readonly model: string;
   readonly complexity: string | null;
   readonly tier: string | null;
+  readonly mode?: LlmHubMode;
+  readonly effort?: string;
+  readonly role?: string;
+  readonly state?: LlmHubState;
+  readonly reviewers?: readonly LlmHubReviewer[];
+  readonly ageMs?: number;
+  readonly stale?: boolean;
+}
+
+// LlmHubClient returns null when the Smart Auto call failed; `selection: null` means the hub had none yet.
+export interface LlmHubSelectionLookup {
+  readonly selection: LlmHubAuto | null;
 }
 
 // LlmHubClient returns null when the hub call failed; `decision: null` means the hub had no decision yet.

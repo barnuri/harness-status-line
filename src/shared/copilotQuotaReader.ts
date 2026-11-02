@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { CopilotQuotaEntry, CopilotQuotaState } from '../types.ts';
+import { isRecord } from './isRecord.ts';
 
 export class CopilotQuotaReader {
   private static readonly DEFAULT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -49,7 +50,7 @@ export class CopilotQuotaReader {
   parseState(raw: string): CopilotQuotaState | null {
     try {
       const parsed: unknown = JSON.parse(raw);
-      if (!this.isRecord(parsed) || !this.isFiniteNumber(parsed['updatedAt']) || !Array.isArray(parsed['quotas'])) {
+      if (!isRecord(parsed) || !this.isFiniteNumber(parsed['updatedAt']) || !Array.isArray(parsed['quotas'])) {
         return null;
       }
 
@@ -81,7 +82,7 @@ export class CopilotQuotaReader {
   }
 
   private parseQuota(value: unknown): CopilotQuotaEntry | null {
-    if (!this.isRecord(value)) {
+    if (!isRecord(value)) {
       return null;
     }
 
@@ -114,10 +115,6 @@ export class CopilotQuotaReader {
       ...(overagePermitted !== undefined ? { overagePermitted } : {}),
       ...(typeof resetDate === 'string' ? { resetDate } : {}),
     };
-  }
-
-  private isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   private isFiniteNumber(value: unknown): value is number {

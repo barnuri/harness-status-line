@@ -1,9 +1,10 @@
-import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance, CopilotQuotaState, CopilotQuotaEntry, LlmHubAuto } from './types.ts';
+import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance, CopilotQuotaState, CopilotQuotaEntry, LlmHubAuto, LlmHubReviewer } from './types.ts';
 import { formatTokenCount, formatTokenLimit, formatTokenPair } from './shared/tokenFormat.ts';
 import { resolveSessionSlug } from './shared/sessionSlug.ts';
 import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
 import { CursorAutoModelReader } from './shared/cursorAutoModelReader.ts';
 import { CopilotEffortReader } from './shared/copilotEffortReader.ts';
+import { PayloadClassifier } from './shared/payloadClassifier.ts';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -17,7 +18,18 @@ export class StatusParser {
   private static readonly MAX_MODE_SUFFIX = ' · max';
   private static readonly AUTO_MODEL_NAMES: ReadonlyArray<string> = ['auto', 'default'];
   private static readonly LLM_HUB_AUTO_LABEL = 'Auto';
+  private static readonly LLM_HUB_SMART_AUTO_LABEL = 'Smart Auto';
+  private static readonly LLM_HUB_SMART_AUTO_MODEL = /^hub\/smart-auto/;
   private static readonly LLM_HUB_AUTO_ARROW = ' → ';
+  private static readonly LLM_HUB_FLAG_SEPARATOR = ' · ';
+  private static readonly LLM_HUB_SELECTING = 'selecting';
+  private static readonly LLM_HUB_RETRYING = 'retrying';
+  private static readonly LLM_HUB_REVIEWING = 'reviewing';
+  private static readonly LLM_HUB_REVIEWERS = 'reviewers';
+  private static readonly LLM_HUB_STALE = 'stale';
+  private static readonly MS_PER_SECOND = 1000;
+  private static readonly SECS_PER_MINUTE = 60;
+  private static readonly MINUTES_PER_HOUR = 60;
   private static readonly AUTORUN_LABEL = 'autorun';
   private static readonly AUTORUN_VALUE = 'on';
   private static readonly YOLO_LABEL = 'yolo';
@@ -43,6 +55,7 @@ export class StatusParser {
 
   private readonly autoModelReader: CursorAutoModelReader;
   private readonly copilotEffortReader: CopilotEffortReader;
+  private readonly payloadClassifier = new PayloadClassifier();
   private readonly quotaResetFormat: Intl.DateTimeFormat;
   private readonly quotaAmountFormat = new Intl.NumberFormat(StatusParser.QUOTA_LOCALE, { maximumFractionDigits: 0 });
 
@@ -124,7 +137,7 @@ export class StatusParser {
       }
     }
 
-    if (effort) {
+    if (effort && !status.llm_hub_auto) {
       segments.push({ icon: '🧠 ', label: '', value: effort, fg: colors.effort.fg, bg: colors.effort.bg });
     }
 
@@ -342,7 +355,7 @@ export class StatusParser {
   }
 
   private extractModel(status: StatusJSON, shownEffort: string | null): string | null {
-    if (status.llm_hub_auto) { return this.formatLlmHubAuto(status.llm_hub_auto); }
+    if (status.llm_hub_auto) { return this.formatLlmHubAuto(status.llm_hub_auto, shownEffort); }
     const raw = status.model;
     if (!raw) { return null; }
     if (typeof raw === 'string') { return this.withResolvedAutoModel(raw, status); }
@@ -359,13 +372,49 @@ export class StatusParser {
     return this.withCopilotContextSize(value, status, shownEffort);
   }
 
-  // llm-hub ids are qualified ("copilot/claude-sonnet-5-5"); show only the bare model, e.g. "Auto (Intelligence) → gpt-6.1-sol (medium)".
-  private formatLlmHubAuto(auto: LlmHubAuto): string {
-    const slash = auto.model.indexOf('/');
-    const model = slash === -1 ? auto.model : auto.model.slice(slash + 1);
+  // The hub's applied effort appears once, inside the label; helper stages, retries and staleness follow after " · ".
+  private formatLlmHubAuto(auto: LlmHubAuto, effort: string | null): string {
+    const label = auto.mode === 'smart-auto' ? StatusParser.LLM_HUB_SMART_AUTO_LABEL : StatusParser.LLM_HUB_AUTO_LABEL;
     const tier = auto.tier === null ? '' : ` (${auto.tier.charAt(0).toUpperCase()}${auto.tier.slice(1)})`;
-    const complexity = auto.complexity === null ? '' : ` (${auto.complexity})`;
-    return `${StatusParser.LLM_HUB_AUTO_LABEL}${tier}${StatusParser.LLM_HUB_AUTO_ARROW}${model}${complexity}`;
+    const model = this.bareModel(auto.model);
+    const head = model.length === 0
+      ? `${label}${tier}`
+      : `${label}${tier}${StatusParser.LLM_HUB_AUTO_ARROW}${model}${effort === null ? '' : ` (🧠 ${effort})`}`;
+    return [head, ...this.llmHubFlags(auto)].join(StatusParser.LLM_HUB_FLAG_SEPARATOR);
+  }
+
+  // A selection with no main model yet is still selecting; a stale one keeps its age so it is never read as current.
+  private llmHubFlags(auto: LlmHubAuto): string[] {
+    const flags: string[] = [];
+    if (auto.model.length === 0 || auto.state === 'selected') { flags.push(StatusParser.LLM_HUB_SELECTING); }
+    if (auto.state === 'rejected') { flags.push(StatusParser.LLM_HUB_RETRYING); }
+    flags.push(...this.reviewerFlags(auto.reviewers ?? []));
+    if (auto.stale === true) {
+      flags.push(auto.ageMs === undefined ? StatusParser.LLM_HUB_STALE : `${StatusParser.LLM_HUB_STALE} ${this.formatAge(auto.ageMs)}`);
+    }
+    return flags;
+  }
+
+  // One helper shows its model; several show a count, because one main label cannot name them all.
+  private reviewerFlags(reviewers: readonly LlmHubReviewer[]): string[] {
+    const only = reviewers[0];
+    if (reviewers.length > 1) { return [`${reviewers.length} ${StatusParser.LLM_HUB_REVIEWERS}`]; }
+    if (only === undefined) { return []; }
+    return [`${StatusParser.LLM_HUB_REVIEWING}: ${this.bareModel(only.model)}`];
+  }
+
+  // llm-hub ids are qualified ("copilot/claude-sonnet-5-5"); show only the bare model.
+  private bareModel(id: string): string {
+    const slash = id.indexOf('/');
+    return slash === -1 ? id : id.slice(slash + 1);
+  }
+
+  private formatAge(ageMs: number): string {
+    const seconds = Math.floor(ageMs / StatusParser.MS_PER_SECOND);
+    if (seconds < StatusParser.SECS_PER_MINUTE) { return `${seconds}s`; }
+    const minutes = Math.floor(seconds / StatusParser.SECS_PER_MINUTE);
+    if (minutes < StatusParser.MINUTES_PER_HOUR) { return `${minutes}m`; }
+    return `${Math.floor(minutes / StatusParser.MINUTES_PER_HOUR)}h`;
   }
 
   // Copilot's display_name embeds the effort (e.g. "claude-opus-5.5 · medium"); drop it when the 🧠 segment shows it.
@@ -399,10 +448,18 @@ export class StatusParser {
     return mode;
   }
 
+  // The hub's applied effort replaces the harness setting; an unobserved Smart Auto shows no effort rather than a guess.
   private extractEffort(status: StatusJSON): string | null {
+    if (status.llm_hub_auto) { return status.llm_hub_auto.effort ?? null; }
+    if (this.isSmartAutoModel(status)) { return null; }
     if (status.effort?.level) { return status.effort.level; }
     if (!this.isCopilotCliPayload(status)) { return null; }
     return this.copilotEffortReader.readEffort(status.session_id);
+  }
+
+  private isSmartAutoModel(status: StatusJSON): boolean {
+    const id = this.payloadClassifier.hubModelId(status);
+    return id !== null && StatusParser.LLM_HUB_SMART_AUTO_MODEL.test(id);
   }
 
   private extractWorkflowActive(status: StatusJSON): boolean {

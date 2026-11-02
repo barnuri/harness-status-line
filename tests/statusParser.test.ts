@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { StatusParser } from '../src/statusParser.ts';
 import { CursorAutoModelReader } from '../src/shared/cursorAutoModelReader.ts';
 import { CopilotEffortReader } from '../src/shared/copilotEffortReader.ts';
 import { ConfigManager } from '../src/configManager.ts';
 import { writeWorkflowActiveState } from '../src/shared/workflowActiveState.ts';
-import type { Config, StatusJSON } from '../src/types.ts';
+import type { Config, Segment, StatusJSON } from '../src/types.ts';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -16,6 +16,26 @@ function makeConfig(overrides?: Partial<Config>): Config {
 }
 
 const parser = new StatusParser();
+
+// The auth segment reads these env vars, which a developer's shell may set. Clear them per test
+// and restore the real values afterwards, so results do not depend on the machine.
+const AUTH_ENV_KEYS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_SERVER_NAME'] as const;
+const savedAuthEnv: Record<string, string | undefined> = {};
+beforeEach(() => {
+  for (const key of AUTH_ENV_KEYS) {
+    savedAuthEnv[key] = process.env[key];
+    delete process.env[key];
+  }
+});
+afterEach(() => {
+  for (const key of AUTH_ENV_KEYS) {
+    if (savedAuthEnv[key] === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = savedAuthEnv[key];
+    }
+  }
+});
 
 // ────────────────────────────────────────────────────────
 // parse()
@@ -427,28 +447,140 @@ describe('buildSegments() — Cursor Auto model', () => {
 });
 
 describe('buildSegments() — llm-hub Auto model', () => {
-  it('shows the capitalized Auto tier, the model it picked, and its complexity', () => {
+  // Every effort value on the line: the 🧠 chip itself, or a "🧠 x" inside another segment's text.
+  const brainValues = (segs: Segment[]): string[] =>
+    segs.flatMap((s) => (s.icon.includes('🧠') ? [s.value] : [...s.value.matchAll(/🧠 ([^)·]+)/g)].map((m) => m[1] ?? '')));
+  const modelValue = (segs: Segment[]): string | undefined => segs.find((s) => s.icon === '🤖 ')?.value;
+
+  it('shows the tier, the model it picked, and the hub-applied effort once inside the label', () => {
     const segs = parser.buildSegments({
       model: { id: 'copilot/auto-intelligence', display_name: 'copilot/auto-intelligence' },
-      llm_hub_auto: { model: 'copilot/gpt-6.1-sol', complexity: 'medium', tier: 'intelligence' },
+      llm_hub_auto: { model: 'copilot/gpt-6.1-sol', complexity: 'medium', tier: 'intelligence', mode: 'auto', effort: 'medium' },
     }, cfg);
-    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto (Intelligence) → gpt-6.1-sol (medium)');
+    expect(modelValue(segs)).toBe('Auto (Intelligence) → gpt-6.1-sol (🧠 medium)');
+    expect(segs.some((s) => s.icon === '🧠 ')).toBe(false);
+  });
+
+  it('shows the hub effort, not the harness effort, when they differ', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'copilot/auto' },
+      effort: { level: 'high' },
+      llm_hub_auto: { model: 'copilot/gpt-6.1-sol', complexity: null, tier: 'intelligence', mode: 'auto', effort: 'medium' },
+    }, cfg);
+    expect(modelValue(segs)).toBe('Auto (Intelligence) → gpt-6.1-sol (🧠 medium)');
+    expect(brainValues(segs)).toEqual(['medium']);
+  });
+
+  it('shows an explicit effort override the hub applied', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'copilot/auto' },
+      effort: { level: 'low' },
+      llm_hub_auto: { model: 'copilot/claude-opus-5-5', complexity: null, tier: 'intelligence', mode: 'auto', effort: 'max' },
+    }, cfg);
+    expect(modelValue(segs)).toBe('Auto (Intelligence) → claude-opus-5-5 (🧠 max)');
+    expect(brainValues(segs)).toEqual(['max']);
   });
 
   it('falls back to "Auto →" when the hub reports no tier', () => {
     const segs = parser.buildSegments({
       model: { id: 'copilot/auto', display_name: 'copilot/auto' },
-      llm_hub_auto: { model: 'copilot/claude-sonnet-5-5', complexity: 'medium', tier: null },
+      llm_hub_auto: { model: 'copilot/claude-sonnet-5-5', complexity: 'medium', tier: null, mode: 'auto', effort: 'low' },
     }, cfg);
-    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto → claude-sonnet-5-5 (medium)');
+    expect(modelValue(segs)).toBe('Auto → claude-sonnet-5-5 (🧠 low)');
   });
 
-  it('omits the complexity parentheses when the complexity is null', () => {
+  it('omits the effort parentheses when the hub sent no effort, and does not fall back to the harness effort', () => {
     const segs = parser.buildSegments({
       model: { id: 'copilot/auto' },
-      llm_hub_auto: { model: 'copilot/claude-haiku-5-5', complexity: null, tier: 'balance' },
+      effort: { level: 'high' },
+      llm_hub_auto: { model: 'copilot/claude-haiku-5-5', complexity: null, tier: 'balance', mode: 'auto' },
     }, cfg);
-    expect(segs.find(s => s.icon === '🤖 ')?.value).toBe('Auto (Balance) → claude-haiku-5-5');
+    expect(modelValue(segs)).toBe('Auto (Balance) → claude-haiku-5-5');
+    expect(brainValues(segs)).toEqual([]);
+  });
+
+  it('shows no effort at all when the effort segment is hidden', () => {
+    const config = makeConfig({ segments: { ...cfg.segments, effort: false } });
+    const segs = parser.buildSegments({
+      model: { id: 'copilot/auto' },
+      llm_hub_auto: { model: 'copilot/claude-haiku-5-5', complexity: null, tier: 'balance', mode: 'auto', effort: 'medium' },
+    }, config);
+    expect(modelValue(segs)).toBe('Auto (Balance) → claude-haiku-5-5');
+    expect(brainValues(segs)).toEqual([]);
+  });
+
+  it('shows Smart Auto with its main model and effort', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'hub/smart-auto-balance' },
+      llm_hub_auto: { model: 'copilot/model-a', complexity: null, tier: 'balance', mode: 'smart-auto', effort: 'low', state: 'started', reviewers: [] },
+    }, cfg);
+    expect(modelValue(segs)).toBe('Smart Auto (Balance) → model-a (🧠 low)');
+  });
+
+  it('names one active reviewer after the main model', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'hub/smart-auto-balance' },
+      llm_hub_auto: {
+        model: 'copilot/model-a', complexity: null, tier: 'balance', mode: 'smart-auto', effort: 'low', state: 'started',
+        reviewers: [{ model: 'copilot/model-b', effort: 'high' }],
+      },
+    }, cfg);
+    expect(modelValue(segs)).toBe('Smart Auto (Balance) → model-a (🧠 low) · reviewing: model-b');
+    expect(brainValues(segs)).toEqual(['low']);
+  });
+
+  it('counts several active reviewers instead of naming them', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'hub/smart-auto-intelligence' },
+      llm_hub_auto: {
+        model: 'copilot/model-a', complexity: null, tier: 'intelligence', mode: 'smart-auto', effort: 'medium', state: 'started',
+        reviewers: [{ model: 'copilot/model-b' }, { model: 'copilot/model-c' }],
+      },
+    }, cfg);
+    expect(modelValue(segs)).toBe('Smart Auto (Intelligence) → model-a (🧠 medium) · 2 reviewers');
+    expect(brainValues(segs)).toEqual(['medium']);
+  });
+
+  it('shows selecting before the first dispatch, with no main model', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'hub/smart-auto-balance' },
+      llm_hub_auto: { model: '', complexity: null, tier: 'balance', mode: 'smart-auto', state: 'selected', reviewers: [] },
+    }, cfg);
+    expect(modelValue(segs)).toBe('Smart Auto (Balance) · selecting');
+  });
+
+  it('shows the retry state next to the attempted model', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'hub/smart-auto-balance' },
+      llm_hub_auto: { model: 'copilot/model-a', complexity: null, tier: 'balance', mode: 'smart-auto', effort: 'low', state: 'rejected', reviewers: [] },
+    }, cfg);
+    expect(modelValue(segs)).toBe('Smart Auto (Balance) → model-a (🧠 low) · retrying');
+  });
+
+  it('marks a last-known selection stale with its age', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'hub/smart-auto-balance' },
+      llm_hub_auto: { model: 'copilot/model-a', complexity: null, tier: 'balance', mode: 'smart-auto', effort: 'low', stale: true, ageMs: 185_000 },
+    }, cfg);
+    expect(modelValue(segs)).toBe('Smart Auto (Balance) → model-a (🧠 low) · stale 3m');
+  });
+
+  it('shows no effort for an unobserved Smart Auto instead of the harness setting', () => {
+    const segs = parser.buildSegments({ model: { id: 'hub/smart-auto-balance' }, effort: { level: 'high' } }, cfg);
+    expect(segs.some((s) => s.icon === '🧠 ')).toBe(false);
+    expect(brainValues(segs)).toEqual([]);
+  });
+
+  it('keeps exactly one effort value in a Smart Auto label with a reviewer', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'hub/smart-auto-balance' },
+      effort: { level: 'high' },
+      llm_hub_auto: {
+        model: 'copilot/model-a', complexity: null, tier: 'balance', mode: 'smart-auto', effort: 'low',
+        reviewers: [{ model: 'copilot/model-b', effort: 'high' }],
+      },
+    }, cfg);
+    expect(brainValues(segs)).toEqual(['low']);
   });
 });
 
