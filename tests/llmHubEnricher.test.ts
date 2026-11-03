@@ -281,6 +281,18 @@ describe('LlmHubEnricher', () => {
     expect(result.context_window?.context_window_size).toBe(1_000_000);
   });
 
+  it('derives the ctx percent from the displayed tokens over the hub window when current_context_tokens is absent', async () => {
+    smartBySession['sess-pct'] = withMain('sess-pct', { model: 'copilot/claude-sonnet-5-5', confirmed_effort: 'high' });
+    const payload = {
+      ...smartStatus('sess-pct'),
+      context_window: { context_window_size: 200_000, total_input_tokens: 190_000, used_percentage: 95, current_context_used_percentage: 95 },
+    } as StatusJSON;
+
+    const result = await enricher().apply(payload, NOW);
+
+    expect(result.context_window?.current_context_used_percentage).toBeCloseTo(19, 5);
+  });
+
   it('keeps the selections of concurrent sessions apart', async () => {
     smartBySession['sess-a'] = withMain('sess-a', { model: 'copilot/model-a', confirmed_effort: 'low' });
     smartBySession['sess-b'] = withMain('sess-b', { model: 'copilot/model-b', confirmed_effort: 'high' });

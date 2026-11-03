@@ -59,7 +59,7 @@ export class LlmHubEnricher {
       const served = await client.fetchModelWindow(LlmHubEnricher.qualify(chosen));
       if (served !== null) {
         const ctx = status.context_window;
-        const tokens = ctx.current_context_tokens;
+        const tokens = ctx.current_context_tokens ?? ctx.total_input_tokens;
         const percent = typeof tokens === 'number' && tokens >= 0 ? (tokens / served.window) * 100 : ctx.current_context_used_percentage;
         result = {
           ...result,
