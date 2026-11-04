@@ -433,6 +433,10 @@ bun run src/index.ts --setup 2>&1 | grep "Status line configured"
 - [Bun](https://bun.sh) ≥ 1.0
 - A supported harness: Claude Code, Cursor CLI, Copilot CLI, Codex, Pi, and/or opencode
 
+## Related projects
+
+Other barnuri tools (ghx, llm-hub, harness-skills, herdr plugins and more), with install commands: [docs/related-projects.md](docs/related-projects.md).
+
 ## License
 
 MIT

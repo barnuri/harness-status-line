@@ -115,6 +115,10 @@ Cursor CLI reads `statusLine` from `~/.cursor/cli-config.json`. `--setup` writes
 
 Cursor's payload uses `model.display_name`, `context_window.used_percentage`, and `render_width_chars` (preferred wrap width). Optional `vim`, `worktree`, and `autorun` segments omit when absent. Quota chips come from background Cursor usage fetches (`cursor.com/api/usage-summary` for On-Demand Usage, plus `api2.cursor.sh` plan/request endpoints), not from stdin.
 
+## Related Projects
+
+`docs/related-projects.md` lists the user's other projects with install commands. When asked to install one of them (e.g. ghx, llm-hub), run the command from that file.
+
 ## Copilot CLI Integration
 
 Copilot CLI reads `statusLine.command`/`statusLine.refreshInterval` from `~/.copilot/settings.json` (`refreshInterval` is in **seconds**, unlike Claude/Cursor's milliseconds). `--setup` writes this file alongside the Claude and Cursor settings above.
