@@ -2,6 +2,7 @@ import type {
   CopilotQuotaState,
   LlmHubAuto,
   LlmHubDecisionLookup,
+  LlmHubPrice,
   LlmHubReviewer,
   LlmHubSelectionLookup,
   LlmHubState,
@@ -51,8 +52,9 @@ export class LlmHubClient {
     return raw === null ? null : this.parseSelection(raw);
   }
 
-  // The advertised prompt window of one served model, matched without its [1m] suffix; null when unknown.
-  async fetchModelWindow(qualifiedId: string): Promise<{ window: number; oneMillion: boolean } | null> {
+  // The advertised prompt window and list price of one served model, matched without its [1m] suffix; null when the window is unknown.
+  // A zero price is kept, so a local profile shows as free.
+  async fetchModelInfo(qualifiedId: string): Promise<{ window: number; oneMillion: boolean; price?: LlmHubPrice } | null> {
     const raw = await this.get(LlmHubClient.MODELS_PATH);
     if (raw === null) {
       return null;
@@ -69,13 +71,26 @@ export class LlmHubClient {
       if (typeof window !== 'number' || window <= 0 || typeof entry?.['id'] !== 'string') {
         return null;
       }
-      return { window, oneMillion: LlmHubClient.ONE_M_SUFFIX.test(entry['id']) };
+      const price = this.parsePrice(entry['llm_hub_price']);
+      return { window, oneMillion: LlmHubClient.ONE_M_SUFFIX.test(entry['id']), ...(price ? { price } : {}) };
     } catch (err) {
       if (err instanceof Error) {
         return null;
       }
       throw err;
     }
+  }
+
+  private parsePrice(raw: unknown): LlmHubPrice | null {
+    if (!isRecord(raw)) {
+      return null;
+    }
+    const input = raw['input_usd_per_1m'];
+    const output = raw['output_usd_per_1m'];
+    if (typeof input !== 'number' || typeof output !== 'number') {
+      return null;
+    }
+    return { inputPer1M: input, outputPer1M: output };
   }
 
   private async get(pathAndQuery: string): Promise<string | null> {

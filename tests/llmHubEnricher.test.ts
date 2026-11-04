@@ -76,7 +76,7 @@ describe('LlmHubEnricher', () => {
             data: [
               { id: 'copilot/claude-sonnet-5-5[1m]', context_window: 1_000_000 },
               { id: 'copilot/gpt-6.1-sol', context_window: 922_000 },
-              { id: 'copilot/model-a', context_window: 64_000 },
+              { id: 'copilot/model-a', context_window: 64_000, llm_hub_price: { input_usd_per_1m: 4, output_usd_per_1m: 20 } },
             ],
           });
         }
@@ -219,6 +219,7 @@ describe('LlmHubEnricher', () => {
       stale: false,
       ageMs: 0,
       reviewers: [{ model: 'copilot/model-b', effort: 'high' }],
+      price: { inputPer1M: 4, outputPer1M: 20 },
     });
     expect(result.copilot_quota).toBeDefined();
     expect(usageCalls).toBe(1);

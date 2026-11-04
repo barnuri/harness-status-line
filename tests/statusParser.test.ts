@@ -458,6 +458,49 @@ describe('buildSegments() — llm-hub Auto model', () => {
     segs.flatMap((s) => (s.icon.includes('🧠') ? [s.value] : [...s.value.matchAll(/🧠 ([^)·]+)/g)].map((m) => m[1] ?? '')));
   const modelValue = (segs: Segment[]): string | undefined => segs.find((s) => s.icon === '🤖 ')?.value;
 
+  it('shows the list price per 1M tokens right after the picked model name', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'copilot/auto-intelligence', display_name: 'copilot/auto-intelligence' },
+      llm_hub_auto: {
+        model: 'copilot/claude-opus-5-5',
+        complexity: null,
+        tier: 'intelligence',
+        mode: 'auto',
+        effort: 'max',
+        price: { inputPer1M: 4, outputPer1M: 20 },
+      },
+    }, cfg);
+    expect(modelValue(segs)).toBe('Auto (Intelligence) → claude-opus-5-5 · $4/$20 per 1M (🧠 max)');
+  });
+
+  it('shows fractional list prices with up to two decimals', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'copilot/auto-balance', display_name: 'copilot/auto-balance' },
+      llm_hub_auto: {
+        model: 'copilot/claude-haiku-5-5',
+        complexity: null,
+        tier: 'balance',
+        mode: 'auto',
+        price: { inputPer1M: 0.1, outputPer1M: 0.5 },
+      },
+    }, cfg);
+    expect(modelValue(segs)).toBe('Auto (Balance) → claude-haiku-5-5 · $0.1/$0.5 per 1M');
+  });
+
+  it('shows free after the picked model name when its list price is zero', () => {
+    const segs = parser.buildSegments({
+      model: { id: 'copilot/auto-balance', display_name: 'copilot/auto-balance' },
+      llm_hub_auto: {
+        model: 'llama_swap/qwen',
+        complexity: null,
+        tier: 'balance',
+        mode: 'auto',
+        price: { inputPer1M: 0, outputPer1M: 0 },
+      },
+    }, cfg);
+    expect(modelValue(segs)).toBe('Auto (Balance) → qwen · free');
+  });
+
   it('shows the tier, the model it picked, and the hub-applied effort once inside the label', () => {
     const segs = parser.buildSegments({
       model: { id: 'copilot/auto-intelligence', display_name: 'copilot/auto-intelligence' },

@@ -142,6 +142,11 @@ export interface LlmHubReviewer {
 
 // The concrete model llm-hub picked for the session's latest turn, and the tier that picked it.
 // Smart Auto adds the effective effort, role, state and helper stages; `stale` marks last-known data.
+export interface LlmHubPrice {
+  readonly inputPer1M: number;
+  readonly outputPer1M: number;
+}
+
 export interface LlmHubAuto {
   readonly model: string;
   readonly complexity: string | null;
@@ -153,6 +158,7 @@ export interface LlmHubAuto {
   readonly reviewers?: readonly LlmHubReviewer[];
   readonly ageMs?: number;
   readonly stale?: boolean;
+  readonly price?: LlmHubPrice;
 }
 
 // LlmHubClient returns null when the Smart Auto call failed; `selection: null` means the hub had none yet.

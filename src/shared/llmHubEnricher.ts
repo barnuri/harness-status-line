@@ -56,20 +56,21 @@ export class LlmHubEnricher {
     if (isHub && status.session_id && result.llm_hub_auto?.model.startsWith(`${LlmHubEnricher.COPILOT_PROFILE}/`)) {
       store.markCopilotUsed(status.session_id, nowMs);
     }
-    // The ctx denominator is the window the hub serves for the model it chose, not Claude's default size.
+    // The ctx denominator is the window the hub serves for the model it chose, not Claude's default size; the list price shows beside its name.
     const chosen = result.llm_hub_auto?.model;
-    if (chosen && status.context_window) {
-      const served = await client.fetchModelWindow(LlmHubEnricher.qualify(chosen));
-      if (served !== null) {
-        const ctx = status.context_window;
-        const tokens = ctx.current_context_tokens ?? ctx.total_input_tokens;
-        const percent = typeof tokens === 'number' && tokens >= 0 ? (tokens / served.window) * 100 : ctx.current_context_used_percentage;
-        result = {
-          ...result,
-          context_window: { ...ctx, context_window_size: served.window, displayed_context_limit: undefined, current_context_used_percentage: percent },
-          llm_hub_auto: served.oneMillion && result.llm_hub_auto ? { ...result.llm_hub_auto, model: `${result.llm_hub_auto.model}[1m]` } : result.llm_hub_auto,
-        };
-      }
+    const served = chosen ? await client.fetchModelInfo(LlmHubEnricher.qualify(chosen)) : null;
+    if (served !== null && result.llm_hub_auto) {
+      result = { ...result, llm_hub_auto: { ...result.llm_hub_auto, price: served.price } };
+    }
+    if (served !== null && status.context_window) {
+      const ctx = status.context_window;
+      const tokens = ctx.current_context_tokens ?? ctx.total_input_tokens;
+      const percent = typeof tokens === 'number' && tokens >= 0 ? (tokens / served.window) * 100 : ctx.current_context_used_percentage;
+      result = {
+        ...result,
+        context_window: { ...ctx, context_window_size: served.window, displayed_context_limit: undefined, current_context_used_percentage: percent },
+        llm_hub_auto: served.oneMillion && result.llm_hub_auto ? { ...result.llm_hub_auto, model: `${result.llm_hub_auto.model}[1m]` } : result.llm_hub_auto,
+      };
     }
     // Quota is Copilot-only. A Smart Auto session shows it once it has used a Copilot model; a Smart Auto session with none has no Copilot seat to report.
     const copilotSession = isHub && status.session_id !== undefined && store.wasCopilotUsed(status.session_id);

@@ -1,4 +1,4 @@
-import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance, CopilotQuotaState, CopilotQuotaEntry, LlmHubAuto, LlmHubReviewer } from './types.ts';
+import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance, CopilotQuotaState, CopilotQuotaEntry, LlmHubAuto, LlmHubPrice, LlmHubReviewer } from './types.ts';
 import { formatTokenCount, formatTokenLimit, formatTokenPair } from './shared/tokenFormat.ts';
 import { resolveSessionSlug } from './shared/sessionSlug.ts';
 import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
@@ -367,10 +367,21 @@ export class StatusParser {
     const label = auto.mode === 'smart-auto' ? StatusParser.LLM_HUB_SMART_AUTO_LABEL : StatusParser.LLM_HUB_AUTO_LABEL;
     const tier = auto.tier === null ? '' : ` (${auto.tier.charAt(0).toUpperCase()}${auto.tier.slice(1)})`;
     const model = this.bareModel(auto.model);
-    const head = model.length === 0
+    const priced = auto.price === undefined || model.length === 0
+      ? model
+      : `${model} · ${this.formatPrice(auto.price)}`;
+    const head = priced.length === 0
       ? `${label}${tier}`
-      : `${label}${tier}${StatusParser.LLM_HUB_AUTO_ARROW}${model}${effort === null ? '' : ` (🧠 ${effort})`}`;
+      : `${label}${tier}${StatusParser.LLM_HUB_AUTO_ARROW}${priced}${effort === null ? '' : ` (🧠 ${effort})`}`;
     return [head, ...this.llmHubFlags(auto)].join(StatusParser.LLM_HUB_FLAG_SEPARATOR);
+  }
+
+  // Zero list price (local profile) shows as "free"; whole dollars stay bare ($4), fractions keep up to two decimals ($0.1).
+  private formatPrice(price: LlmHubPrice): string {
+    if (price.inputPer1M === 0 && price.outputPer1M === 0) {
+      return 'free';
+    }
+    return `$${Number(price.inputPer1M.toFixed(2))}/$${Number(price.outputPer1M.toFixed(2))} per 1M`;
   }
 
   // A selection with no main model yet is still selecting; a stale one keeps its age so it is never read as current.
