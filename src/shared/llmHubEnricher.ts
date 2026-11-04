@@ -53,6 +53,9 @@ export class LlmHubEnricher {
       const selection = await this.resolveSelection(client, store, status.session_id, nowMs);
       result = selection ? { ...result, llm_hub_auto: selection } : result;
     }
+    if (isHub && status.session_id && result.llm_hub_auto?.model.startsWith(`${LlmHubEnricher.COPILOT_PROFILE}/`)) {
+      store.markCopilotUsed(status.session_id, nowMs);
+    }
     // The ctx denominator is the window the hub serves for the model it chose, not Claude's default size.
     const chosen = result.llm_hub_auto?.model;
     if (chosen && status.context_window) {
@@ -68,9 +71,10 @@ export class LlmHubEnricher {
         };
       }
     }
-    // Quota is Copilot-only: a Smart Auto session has no Copilot seat to report.
-    if (isCopilot && !status.copilot_quota) {
-      const quota = await this.resolveUsage(client, store, profile, nowMs);
+    // Quota is Copilot-only. A Smart Auto session shows it once it has used a Copilot model; a Smart Auto session with none has no Copilot seat to report.
+    const copilotSession = isHub && status.session_id !== undefined && store.wasCopilotUsed(status.session_id);
+    if ((isCopilot || copilotSession) && !status.copilot_quota) {
+      const quota = await this.resolveUsage(client, store, LlmHubEnricher.COPILOT_PROFILE, nowMs);
       // Rate limits in a hub session describe the Anthropic login, not the Copilot seat that serves it.
       result = quota ? { ...result, copilot_quota: quota, rate_limits: undefined } : result;
     }

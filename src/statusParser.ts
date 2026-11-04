@@ -50,29 +50,19 @@ export class StatusParser {
   private static readonly SECS_PER_DAY = 24 * 3600;
   private static readonly NANO_PER_AI_CREDIT = 1_000_000_000;
   private static readonly USD_PER_AI_CREDIT = 0.01;
-  // Fixed English layout ("Sun 1 Nov 02:00") to match the rest of the line; only the time zone varies.
+  // Fixed English layout to match the rest of the line.
   private static readonly QUOTA_LOCALE = 'en-US';
 
   private readonly autoModelReader: CursorAutoModelReader;
   private readonly copilotEffortReader: CopilotEffortReader;
   private readonly payloadClassifier = new PayloadClassifier();
-  private readonly quotaResetFormat: Intl.DateTimeFormat;
   private readonly quotaAmountFormat = new Intl.NumberFormat(StatusParser.QUOTA_LOCALE, { maximumFractionDigits: 0 });
 
-  // timeZone is a test seam; undefined means the user's local zone.
-  constructor(autoModelReader?: CursorAutoModelReader, copilotEffortReader?: CopilotEffortReader, timeZone?: string) {
+  constructor(autoModelReader?: CursorAutoModelReader, copilotEffortReader?: CopilotEffortReader) {
     this.autoModelReader = autoModelReader ?? new CursorAutoModelReader();
     this.copilotEffortReader = copilotEffortReader ?? new CopilotEffortReader();
-    this.quotaResetFormat = new Intl.DateTimeFormat(StatusParser.QUOTA_LOCALE, {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-      ...(timeZone !== undefined ? { timeZone } : {}),
-    });
   }
+
 
   parse(raw: string): StatusJSON {
     if (!raw.trim()) {
@@ -616,11 +606,9 @@ export class StatusParser {
     if (Number.isNaN(resetMs)) {
       return null;
     }
-    const parts = Object.fromEntries(
-      this.quotaResetFormat.formatToParts(resetMs).map((part) => [part.type, part.value]),
-    );
-    return `${parts['weekday']} ${parts['day']} ${parts['month']} ${parts['hour']}:${parts['minute']}`;
+    return this.formatResetIn(resetMs / 1000);
   }
+
 
   private creditsLabel(credits: CreditBalance): string {
     if (credits.pool === 'on_demand') {
@@ -756,7 +744,7 @@ export class StatusParser {
     }
     parts.push(`${pct}%`);
     if (limit.resets_at) {
-      parts.push(`resets ${this.formatSpendReset(limit.resets_at)}`);
+      parts.push(`resets ${this.formatResetIn(limit.resets_at)}`);
     }
     return {
       icon: StatusParser.CREDITS_ICON,
@@ -774,13 +762,14 @@ export class StatusParser {
     })}`;
   }
 
-  private formatSpendReset(resetsAt: number, nowSecs: number = Date.now() / 1000): string {
+  private formatResetIn(resetsAt: number, nowSecs: number = Date.now() / 1000): string {
     const days = Math.floor((resetsAt - nowSecs) / StatusParser.SECS_PER_DAY);
     if (days < 1) {
       return `in ${this.formatResetTime(resetsAt, nowSecs)}`;
     }
     return `in ${days} ${days === 1 ? 'day' : 'days'}`;
   }
+
 
   private formatResetTime(resetsAt: number, nowSecs: number = Date.now() / 1000): string {
     const secs = Math.max(0, resetsAt - nowSecs);

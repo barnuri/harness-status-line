@@ -202,7 +202,7 @@ describe('LlmHubEnricher', () => {
     expect(result.copilot_quota).toBeUndefined();
   });
 
-  it('sets the Smart Auto selection for hub/smart-auto-* and reports no Copilot quota', async () => {
+  it('sets the Smart Auto selection for hub/smart-auto-* and reports Copilot quota once a Copilot model is selected', async () => {
     smartBySession['sess-1'] = withMain(
       'sess-1',
       { model: 'copilot/model-a', tier: 'balance', role: 'implement', confirmed_effort: 'low' },
@@ -220,9 +220,41 @@ describe('LlmHubEnricher', () => {
       ageMs: 0,
       reviewers: [{ model: 'copilot/model-b', effort: 'high' }],
     });
+    expect(result.copilot_quota).toBeDefined();
+    expect(usageCalls).toBe(1);
+    expect(smartCalls).toBe(1);
+  });
+
+  it('reports no Copilot quota for a Smart Auto selection without a Copilot model', async () => {
+    smartBySession['sess-1'] = withMain(
+      'sess-1',
+      { model: 'claude-opus-5-5', tier: 'balance', role: 'implement', confirmed_effort: 'low' },
+      [{ stage: 'solver', model: 'claude-opus-5-5' }],
+    );
+
+    const result = await enricher().apply(smartStatus(), NOW);
+
+    expect(result.llm_hub_auto?.model).toBe('claude-opus-5-5');
     expect(result.copilot_quota).toBeUndefined();
     expect(usageCalls).toBe(0);
-    expect(smartCalls).toBe(1);
+  });
+
+  it('keeps the Copilot quota after the Smart Auto pick moves off Copilot', async () => {
+    smartBySession['sess-1'] = withMain(
+      'sess-1',
+      { model: 'copilot/model-a', tier: 'balance', role: 'implement', confirmed_effort: 'low' },
+      [{ stage: 'solver', model: 'copilot/model-a' }],
+    );
+    await enricher().apply(smartStatus(), NOW);
+
+    smartBySession['sess-1'] = withMain(
+      'sess-1',
+      { model: 'claude-opus-5-5', tier: 'balance', role: 'implement', confirmed_effort: 'low' },
+      [{ stage: 'solver', model: 'claude-opus-5-5' }],
+    );
+    const result = await enricher().apply(smartStatus(), NOW + 1000);
+
+    expect(result.copilot_quota).toBeDefined();
   });
 
   it('leaves other hub models untouched', async () => {

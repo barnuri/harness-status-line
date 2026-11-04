@@ -20,10 +20,15 @@ interface StoredSelection {
   readonly selection: LlmHubAuto;
 }
 
+interface StoredCopilotUse {
+  readonly fetchedAt: number;
+}
+
 interface LlmHubStoreData {
   readonly usage: Readonly<Record<string, StoredUsage>>;
   readonly decisions: Readonly<Record<string, StoredDecision>>;
   readonly selections: Readonly<Record<string, StoredSelection>>;
+  readonly copilotUsed: Readonly<Record<string, StoredCopilotUse>>;
   readonly failedAt?: number;
 }
 
@@ -37,7 +42,7 @@ export class LlmHubStore {
   // An unchanged selection is rewritten at this interval so its fetch time stays current.
   static readonly SELECTION_TOUCH_MS = 60 * 1000;
   private static readonly MAX_SESSIONS = 50;
-  private static readonly EMPTY: LlmHubStoreData = { usage: {}, decisions: {}, selections: {} };
+  private static readonly EMPTY: LlmHubStoreData = { usage: {}, decisions: {}, selections: {}, copilotUsed: {} };
 
   private readonly filePath: string;
   private readonly quotaReader = new CopilotQuotaReader();
@@ -121,6 +126,19 @@ export class LlmHubStore {
     this.write({ ...data, selections });
   }
 
+  // Sticky per session: once a Smart Auto selection used a Copilot model, the session keeps its quota.
+  wasCopilotUsed(session: string): boolean {
+    return this.read().copilotUsed[session] !== undefined;
+  }
+
+  markCopilotUsed(session: string, nowMs: number): void {
+    const data = this.read();
+    if (data.copilotUsed[session] !== undefined) {
+      return;
+    }
+    this.write({ ...data, copilotUsed: LlmHubStore.keepNewest(data.copilotUsed, session, { fetchedAt: nowMs }) });
+  }
+
   isBackingOff(nowMs: number): boolean {
     const failedAt = this.read().failedAt;
     return failedAt !== undefined && nowMs - failedAt < LlmHubStore.FAILURE_BACKOFF_MS && failedAt <= nowMs;
@@ -142,7 +160,12 @@ export class LlmHubStore {
       }
       // Files written before Smart Auto was stored have no selections key.
       const selections = isRecord(parsed['selections']) ? parsed['selections'] : {};
-      return { ...(parsed as unknown as LlmHubStoreData), selections: selections as Record<string, StoredSelection> };
+      const copilotUsed = isRecord(parsed['copilotUsed']) ? parsed['copilotUsed'] : {};
+      return {
+        ...(parsed as unknown as LlmHubStoreData),
+        selections: selections as Record<string, StoredSelection>,
+        copilotUsed: copilotUsed as Record<string, StoredCopilotUse>,
+      };
     } catch (err) {
       if (err instanceof Error) {
         return LlmHubStore.EMPTY;

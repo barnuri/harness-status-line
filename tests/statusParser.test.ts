@@ -17,6 +17,12 @@ function makeConfig(overrides?: Partial<Config>): Config {
 
 const parser = new StatusParser();
 
+// A reset this far ahead; the 30 s pad keeps the floored unit at the stated value.
+const resetAfter = (secs: number): string => new Date(Date.now() + secs * 1000 + 30_000).toISOString();
+const inDays = (days: number): string => resetAfter(days * 24 * 3600);
+const inHours = (hours: number): string => resetAfter(hours * 3600);
+const inMinutes = (minutes: number): string => resetAfter(minutes * 60);
+
 // The auth segment reads these env vars, which a developer's shell may set. Clear them per test
 // and restore the real values afterwards, so results do not depend on the machine.
 const AUTH_ENV_KEYS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_SERVER_NAME'] as const;
@@ -1600,22 +1606,21 @@ describe('buildSegments() — Copilot CLI payload', () => {
     expect(segs.find(s => s.label === 'cost')).toBeUndefined();
   });
 
-  it('shows used Copilot quota and its local reset time when the entry has no unit', () => {
-    const utcParser = new StatusParser(undefined, undefined, 'UTC');
-    const segs = utcParser.buildSegments(makeCopilotStatus({
+  it('shows used Copilot quota and days until its reset when the entry has no unit', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
       copilot_quota: {
         updatedAt: Date.now(),
         quotas: [
           { id: 'chat', remainingPercentage: 75 },
-          { id: 'premium_interactions', remainingPercentage: 1.625, used: 9_837, entitlement: 10_000, resetDate: '2026-11-01T00:00:00Z' },
+          { id: 'premium_interactions', remainingPercentage: 1.625, used: 9_837, entitlement: 10_000, resetDate: inDays(21.5) },
         ],
       },
     }), cfg);
 
-    expect(segs.find(s => s.label === 'quota')?.value).toBe('98.4% used · reset Sun 1 Nov 00:00');
+    expect(segs.find(s => s.label === 'quota')?.value).toBe('98.4% used · reset in 21 days');
   });
 
-  const liveAicQuota = (): StatusJSON['copilot_quota'] => ({
+  const liveAicQuota = (resetDate: string): StatusJSON['copilot_quota'] => ({
     updatedAt: Date.now(),
     quotas: [{
       id: 'premium_interactions',
@@ -1625,29 +1630,33 @@ describe('buildSegments() — Copilot CLI payload', () => {
       remaining: 20_489,
       remainingPercentage: 62,
       overagePermitted: false,
-      resetDate: '2026-11-01T00:00:00Z',
+      resetDate,
     }],
   });
 
-  it('shows approximate Copilot AIC used/limit with USD and the reset in UTC', () => {
-    const utcParser = new StatusParser(undefined, undefined, 'UTC');
-    const segs = utcParser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota() }), cfg);
+  it('shows approximate Copilot AIC used/limit with USD and days until the reset', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota(inDays(3.5)) }), cfg);
 
     expect(segs.find(s => s.label === 'quota')?.value)
-      .toBe('~12,626/33,000 AIC ($126.26/$330.00) · 38% used · reset Sun 1 Nov 00:00');
+      .toBe('~12,626/33,000 AIC ($126.26/$330.00) · 38% used · reset in 3 days');
   });
 
-  it('shows the Copilot AIC reset in the local time zone', () => {
-    const jerusalemParser = new StatusParser(undefined, undefined, 'Asia/Jerusalem');
-    const segs = jerusalemParser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota() }), cfg);
+  it('shows hours until a Copilot reset less than one day away', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota(inHours(5)) }), cfg);
 
     expect(segs.find(s => s.label === 'quota')?.value)
-      .toBe('~12,626/33,000 AIC ($126.26/$330.00) · 38% used · reset Sun 1 Nov 02:00');
+      .toBe('~12,626/33,000 AIC ($126.26/$330.00) · 38% used · reset in 5h');
+  });
+
+  it('shows minutes until a Copilot reset less than one hour away', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota(inMinutes(30)) }), cfg);
+
+    expect(segs.find(s => s.label === 'quota')?.value)
+      .toBe('~12,626/33,000 AIC ($126.26/$330.00) · 38% used · reset in 30m');
   });
 
   it('shows Copilot request quota used/limit without the approximate marker', () => {
-    const utcParser = new StatusParser(undefined, undefined, 'UTC');
-    const segs = utcParser.buildSegments(makeCopilotStatus({
+    const segs = parser.buildSegments(makeCopilotStatus({
       copilot_quota: {
         updatedAt: Date.now(),
         quotas: [{
@@ -1656,12 +1665,12 @@ describe('buildSegments() — Copilot CLI payload', () => {
           used: 120,
           entitlement: 300,
           remainingPercentage: 60,
-          resetDate: '2026-11-01T00:00:00Z',
+          resetDate: inDays(10.5),
         }],
       },
     }), cfg);
 
-    expect(segs.find(s => s.label === 'quota')?.value).toBe('120/300 req · 40% used · reset Sun 1 Nov 00:00');
+    expect(segs.find(s => s.label === 'quota')?.value).toBe('120/300 req · 40% used · reset in 10 days');
   });
 
   it('hides the Copilot quota when rate-limit segments are disabled', () => {
