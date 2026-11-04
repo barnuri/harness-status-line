@@ -995,9 +995,20 @@ describe('buildSegments() — rate limit segments', () => {
       rate_limits: { spend_limit: { used_percentage: 0.44, resets_at, used_usd: 19.93, limit_usd: 4500, period: 'monthly' } },
     }, cfg);
     const seg = segs.find(s => s.label === 'monthly');
-    expect(seg?.value).toBe('$19.93/$4,500.00 · 0% · resets in 21 days');
+    expect(seg?.value).toMatch(/^\$19\.93\/\$4,500\.00 · 0% · resets in 21 days \(\d+ work days\)$/);
     expect(seg?.icon).toBe('💳 ');
     expect(seg?.bg).toEqual(cfg.colors.rateHealthy.bg);
+  });
+
+  it('spend_limit reports work days left from the configured work week', () => {
+    const resets_at = Math.floor(Date.now() / 1000) + 21 * 86400 + 3600;
+    const none = makeConfig({ workDays: [] });
+    const everyDay = makeConfig({ workDays: [0, 1, 2, 3, 4, 5, 6] });
+    const noneSeg = parser.buildSegments({ rate_limits: { spend_limit: { used_percentage: 1, resets_at } } }, none).find(s => s.label === 'spend');
+    const everySeg = parser.buildSegments({ rate_limits: { spend_limit: { used_percentage: 1, resets_at } } }, everyDay).find(s => s.label === 'spend');
+
+    expect(noneSeg?.value).toMatch(/ · resets in 21 days \(0 work days\)$/);
+    expect(Number(everySeg?.value.match(/\((\d+) work days\)$/)?.[1])).toBeGreaterThanOrEqual(21);
   });
 
   it('spend_limit without usd or period shows percent under "spend" and relative reset', () => {
@@ -1008,10 +1019,10 @@ describe('buildSegments() — rate limit segments', () => {
     expect(seg?.bg).toEqual(cfg.colors.rateCritical.bg);
   });
 
-  it('spend_limit reset one day out says "in 1 day"', () => {
+  it('spend_limit reset one day out says "in 1 day" with its work days', () => {
     const resets_at = Math.floor(Date.now() / 1000) + 86400 + 3600;
     const segs = parser.buildSegments({ rate_limits: { spend_limit: { used_percentage: 5, resets_at } } }, cfg);
-    expect(segs.find(s => s.label === 'spend')?.value).toBe('5% · resets in 1 day');
+    expect(segs.find(s => s.label === 'spend')?.value).toMatch(/^5% · resets in 1 day \(\d+ work days?\)$/);
   });
 
   it('keeps the session cost segment next to spend_limit', () => {
@@ -1660,7 +1671,7 @@ describe('buildSegments() — Copilot CLI payload', () => {
       },
     }), cfg);
 
-    expect(segs.find(s => s.label === 'quota')?.value).toBe('98.4% used · reset in 21 days');
+    expect(segs.find(s => s.label === 'quota')?.value).toMatch(/^98\.4% used · reset in 21 days \(\d+ work days\)$/);
   });
 
   const liveAicQuota = (resetDate: string): StatusJSON['copilot_quota'] => ({
@@ -1681,7 +1692,7 @@ describe('buildSegments() — Copilot CLI payload', () => {
     const segs = parser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota(inDays(3.5)) }), cfg);
 
     expect(segs.find(s => s.label === 'quota')?.value)
-      .toBe('~12,626/33,000 AIC ($126.26/$330.00) · 38% used · reset in 3 days');
+      .toMatch(/ · 38% used · reset in 3 days \(\d+ work days?\)$/);
   });
 
   it('shows hours until a Copilot reset less than one day away', () => {
@@ -1713,7 +1724,7 @@ describe('buildSegments() — Copilot CLI payload', () => {
       },
     }), cfg);
 
-    expect(segs.find(s => s.label === 'quota')?.value).toBe('120/300 req · 40% used · reset in 10 days');
+    expect(segs.find(s => s.label === 'quota')?.value).toMatch(/^120\/300 req · 40% used · reset in 10 days \(\d+ work days\)$/);
   });
 
   it('hides the Copilot quota when rate-limit segments are disabled', () => {

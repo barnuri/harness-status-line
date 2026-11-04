@@ -314,6 +314,8 @@ export interface Config {
   readonly segments: SegmentVisibility;
   readonly refreshInterval: number;
   readonly colors: SegmentColorMap;
+  // JS weekdays, 0 = Sunday to 6 = Saturday.
+  readonly workDays: readonly number[];
 }
 
 export interface Segment {

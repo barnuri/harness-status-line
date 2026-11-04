@@ -71,6 +71,7 @@ Keys:
   segments.yolo               true | false
   segments.lines              true | false
   refreshInterval             <milliseconds>
+  workDays                    comma-separated weekdays, 0=Sun .. 6=Sat (default 0,1,2,3,4)
   colors.<segment>.<bg|fg>    <R,G,B>  (e.g. 30,41,59)
 
 Segments: folder, git, ghx, slug, model, ctxHealthy, ctxWarning, ctxCritical,

@@ -77,7 +77,7 @@ export class StatusParser {
 
   buildSegments(status: StatusJSON, config: Config): Segment[] {
     const segments: Segment[] = [];
-    const { colors, segments: visibility } = config;
+    const { colors, segments: visibility, workDays } = config;
 
     if (visibility.folder) {
       const folder = this.extractFolder(status);
@@ -185,7 +185,7 @@ export class StatusParser {
     }
 
     if (visibility.rateLimits) {
-      const copilotQuota = this.buildCopilotQuotaSegment(status.copilot_quota, colors);
+      const copilotQuota = this.buildCopilotQuotaSegment(status.copilot_quota, colors, workDays);
       if (copilotQuota) {
         segments.push(copilotQuota);
       }
@@ -193,7 +193,7 @@ export class StatusParser {
       if (credits) {
         segments.push(credits);
       }
-      const rateLimits = this.extractRateLimits(status, colors);
+      const rateLimits = this.extractRateLimits(status, colors, workDays);
       segments.push(...rateLimits);
 
       const hasSpendLimit = status.rate_limits?.[StatusParser.SPEND_LIMIT_KEY] !== undefined;
@@ -569,7 +569,7 @@ export class StatusParser {
     };
   }
 
-  private buildCopilotQuotaSegment(quota: CopilotQuotaState | undefined, colors: SegmentColorMap): Segment | null {
+  private buildCopilotQuotaSegment(quota: CopilotQuotaState | undefined, colors: SegmentColorMap, workDays: readonly number[]): Segment | null {
     const entry = quota?.quotas
       .filter((item) => item.remainingPercentage >= 0 && item.remainingPercentage <= 100)
       .sort((left, right) => left.remainingPercentage - right.remainingPercentage)[0];
@@ -583,7 +583,7 @@ export class StatusParser {
       : used > 50
         ? colors.rateWarning
         : colors.rateHealthy;
-    const reset = entry.resetDate ? this.formatCopilotQuotaReset(entry) : null;
+    const reset = entry.resetDate ? this.formatCopilotQuotaReset(entry, workDays) : null;
     return {
       icon: StatusParser.CREDITS_ICON,
       label: 'quota',
@@ -609,7 +609,7 @@ export class StatusParser {
     return entry.unit === 'requests' ? `${amounts} req` : null;
   }
 
-  private formatCopilotQuotaReset(entry: CopilotQuotaEntry): string | null {
+  private formatCopilotQuotaReset(entry: CopilotQuotaEntry, workDays: readonly number[]): string | null {
     if (!entry.resetDate) {
       return null;
     }
@@ -617,7 +617,7 @@ export class StatusParser {
     if (Number.isNaN(resetMs)) {
       return null;
     }
-    return this.formatResetIn(resetMs / 1000);
+    return this.formatResetIn(resetMs / 1000, workDays);
   }
 
 
@@ -706,7 +706,7 @@ export class StatusParser {
     return null;
   }
 
-  private extractRateLimits(status: StatusJSON, colors: SegmentColorMap): Segment[] {
+  private extractRateLimits(status: StatusJSON, colors: SegmentColorMap, workDays: readonly number[]): Segment[] {
     const limits = status.rate_limits;
     if (!limits) {
       return [];
@@ -717,7 +717,7 @@ export class StatusParser {
     for (const key of StatusParser.KNOWN_RATE_LIMIT_KEYS) {
       const limit = limits[key];
       if (!limit) { continue; }
-      const seg = this.buildRateLimitSegment(key, limit, colors);
+      const seg = this.buildRateLimitSegment(key, limit, colors, workDays);
       if (seg) { segments.push(seg); }
     }
 
@@ -725,20 +725,20 @@ export class StatusParser {
       if (StatusParser.KNOWN_RATE_LIMIT_KEYS.includes(key)) { continue; }
       const limit = limits[key];
       if (!limit) { continue; }
-      const seg = this.buildRateLimitSegment(key, limit, colors);
+      const seg = this.buildRateLimitSegment(key, limit, colors, workDays);
       if (seg) { segments.push(seg); }
     }
 
     return segments;
   }
 
-  private buildRateLimitSegment(key: string, limit: RateLimit, colors: SegmentColorMap): Segment | null {
+  private buildRateLimitSegment(key: string, limit: RateLimit, colors: SegmentColorMap, workDays: readonly number[]): Segment | null {
     const pct = this.calcUsedPercent(limit);
     if (pct === null) {
       return null;
     }
     if (key === StatusParser.SPEND_LIMIT_KEY) {
-      return this.buildSpendLimitSegment(limit, pct, colors);
+      return this.buildSpendLimitSegment(limit, pct, colors, workDays);
     }
     const icon = (key === 'session' || key === 'five_hour' || key === 'day') ? '⏱ ' : (key === 'week' || key === 'seven_day') ? '📅 ' : '⚡ ';
     const label = key === 'five_hour' || key === 'day' ? 'daily' : key === 'week' || key === 'seven_day' ? 'weekly' : key;
@@ -747,7 +747,7 @@ export class StatusParser {
     return { icon, label, value: `${pct}% used${reset}`, fg: colorConfig.fg, bg: colorConfig.bg };
   }
 
-  private buildSpendLimitSegment(limit: RateLimit, pct: number, colors: SegmentColorMap): Segment {
+  private buildSpendLimitSegment(limit: RateLimit, pct: number, colors: SegmentColorMap, workDays: readonly number[]): Segment {
     const colorConfig = pct > 80 ? colors.rateCritical : pct > 50 ? colors.rateWarning : colors.rateHealthy;
     const parts: string[] = [];
     if (typeof limit.used_usd === 'number' && typeof limit.limit_usd === 'number') {
@@ -755,7 +755,7 @@ export class StatusParser {
     }
     parts.push(`${pct}%`);
     if (limit.resets_at) {
-      parts.push(`resets ${this.formatResetIn(limit.resets_at)}`);
+      parts.push(`resets ${this.formatResetIn(limit.resets_at, workDays)}`);
     }
     return {
       icon: StatusParser.CREDITS_ICON,
@@ -773,12 +773,31 @@ export class StatusParser {
     })}`;
   }
 
-  private formatResetIn(resetsAt: number, nowSecs: number = Date.now() / 1000): string {
+  // Days and hours until the reset. A reset a day or more away also shows the work days left, counting today.
+  private formatResetIn(resetsAt: number, workDays: readonly number[], nowSecs: number = Date.now() / 1000): string {
     const days = Math.floor((resetsAt - nowSecs) / StatusParser.SECS_PER_DAY);
     if (days < 1) {
       return `in ${this.formatResetTime(resetsAt, nowSecs)}`;
     }
-    return `in ${days} ${days === 1 ? 'day' : 'days'}`;
+    const dayText = `in ${days} ${days === 1 ? 'day' : 'days'}`;
+    const work = this.countWorkDays(resetsAt, workDays, nowSecs);
+    return `${dayText} (${work} ${work === 1 ? 'work day' : 'work days'})`;
+  }
+
+  // Local calendar days from today up to, not including, the reset day, that fall on a configured work weekday.
+  private countWorkDays(resetsAt: number, workDays: readonly number[], nowSecs: number): number {
+    const end = new Date(resetsAt * 1000);
+    end.setHours(0, 0, 0, 0);
+    let cursor = new Date(nowSecs * 1000);
+    cursor.setHours(0, 0, 0, 0);
+    let count = 0;
+    while (cursor < end) {
+      if (workDays.includes(cursor.getDay())) {
+        count++;
+      }
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1);
+    }
+    return count;
   }
 
 

@@ -10,6 +10,8 @@ export class ConfigManager {
   static readonly DEFAULT_CONFIG: Config = {
     separatorStyle: 'spaces',
     refreshInterval: 2000,
+    // Sunday to Thursday.
+    workDays: [0, 1, 2, 3, 4],
     segments: {
       folder: true,
       git: true,
@@ -64,7 +66,8 @@ export class ConfigManager {
   set(key: string, rawValue: string): Config {
     const raw = this.loadRaw();
     const parts = key.split('.');
-    this.deepSet(raw as Record<string, unknown>, parts, this.coerceValue(rawValue));
+    const value = key === 'workDays' ? this.parseWorkDays(rawValue) : this.coerceValue(rawValue);
+    this.deepSet(raw as Record<string, unknown>, parts, value);
     const merged = this.mergeWithDefaults(raw);
     this.save(merged);
     return merged;
@@ -127,6 +130,12 @@ export class ConfigManager {
       obj[head] = {};
     }
     this.deepSet(obj[head] as Record<string, unknown>, tail, value);
+  }
+
+  // "0,1,2,3,4" → [0,1,2,3,4]; out-of-range and repeated days are dropped.
+  private parseWorkDays(value: string): number[] {
+    const days = value.split(',').map((item) => item.trim()).filter((item) => /^[0-6]$/.test(item)).map(Number);
+    return [...new Set(days)].sort((a, b) => a - b);
   }
 
   private coerceValue(value: string): unknown {
