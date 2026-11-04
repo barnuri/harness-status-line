@@ -77,7 +77,7 @@ export class StatusParser {
 
   buildSegments(status: StatusJSON, config: Config): Segment[] {
     const segments: Segment[] = [];
-    const { colors, segments: visibility, workDays } = config;
+    const { colors, segments: visibility, workDays, showAic } = config;
 
     if (visibility.folder) {
       const folder = this.extractFolder(status);
@@ -185,7 +185,7 @@ export class StatusParser {
     }
 
     if (visibility.rateLimits) {
-      const copilotQuota = this.buildCopilotQuotaSegment(status.copilot_quota, colors, workDays);
+      const copilotQuota = this.buildCopilotQuotaSegment(status.copilot_quota, colors, workDays, showAic);
       if (copilotQuota) {
         segments.push(copilotQuota);
       }
@@ -569,7 +569,7 @@ export class StatusParser {
     };
   }
 
-  private buildCopilotQuotaSegment(quota: CopilotQuotaState | undefined, colors: SegmentColorMap, workDays: readonly number[]): Segment | null {
+  private buildCopilotQuotaSegment(quota: CopilotQuotaState | undefined, colors: SegmentColorMap, workDays: readonly number[], showAic: boolean): Segment | null {
     const entry = quota?.quotas
       .filter((item) => item.remainingPercentage >= 0 && item.remainingPercentage <= 100)
       .sort((left, right) => left.remainingPercentage - right.remainingPercentage)[0];
@@ -587,7 +587,7 @@ export class StatusParser {
     return {
       icon: StatusParser.CREDITS_ICON,
       label: 'quota',
-      value: [this.formatCopilotQuotaAmount(entry), `${used}% used`, reset ? `reset ${reset}` : null]
+      value: [this.formatCopilotQuotaAmount(entry, showAic), `${used}% used`, reset ? `reset ${reset}` : null]
         .filter((part): part is string => part !== null)
         .join(' · '),
       fg: colorConfig.fg,
@@ -595,8 +595,8 @@ export class StatusParser {
     };
   }
 
-  // AIC values lag github.com billing slightly, hence the leading "~"; 100 AIC = $1.
-  private formatCopilotQuotaAmount(entry: CopilotQuotaEntry): string | null {
+  // AIC values lag github.com billing slightly, hence the leading "~"; 100 AIC = $1. showAic adds the AIC count before the dollars.
+  private formatCopilotQuotaAmount(entry: CopilotQuotaEntry, showAic: boolean): string | null {
     if (entry.used === undefined || entry.entitlement === undefined) {
       return null;
     }
@@ -604,7 +604,8 @@ export class StatusParser {
     if (entry.unit === 'aic') {
       const usd = (credits: number): string =>
         `$${(credits * StatusParser.USD_PER_AI_CREDIT).toFixed(StatusParser.DOLLAR_DECIMALS)}`;
-      return `~${amounts} AIC (${usd(entry.used)}/${usd(entry.entitlement)})`;
+      const dollars = `${usd(entry.used)}/${usd(entry.entitlement)}`;
+      return showAic ? `~${amounts} AIC (${dollars})` : `~${dollars}`;
     }
     return entry.unit === 'requests' ? `${amounts} req` : null;
   }

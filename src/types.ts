@@ -316,6 +316,8 @@ export interface Config {
   readonly colors: SegmentColorMap;
   // JS weekdays, 0 = Sunday to 6 = Saturday.
   readonly workDays: readonly number[];
+  // Copilot AIC count beside the dollar quota; off shows dollars only.
+  readonly showAic: boolean;
 }
 
 export interface Segment {

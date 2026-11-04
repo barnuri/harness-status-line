@@ -1692,21 +1692,28 @@ describe('buildSegments() — Copilot CLI payload', () => {
     const segs = parser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota(inDays(3.5)) }), cfg);
 
     expect(segs.find(s => s.label === 'quota')?.value)
-      .toMatch(/ · 38% used · reset in 3 days \(\d+ work days?\)$/);
+      .toMatch(/^~\$126\.26\/\$330\.00 · 38% used · reset in 3 days \(\d+ work days?\)$/);
+  });
+
+  it('shows the AIC count before the dollars when showAic is on', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota(inDays(3.5)) }), makeConfig({ showAic: true }));
+
+    expect(segs.find(s => s.label === 'quota')?.value)
+      .toMatch(/^~12,626\/33,000 AIC \(\$126\.26\/\$330\.00\) · 38% used · reset in 3 days \(\d+ work days?\)$/);
   });
 
   it('shows hours until a Copilot reset less than one day away', () => {
     const segs = parser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota(inHours(5)) }), cfg);
 
     expect(segs.find(s => s.label === 'quota')?.value)
-      .toBe('~12,626/33,000 AIC ($126.26/$330.00) · 38% used · reset in 5h');
+      .toBe('~$126.26/$330.00 · 38% used · reset in 5h');
   });
 
   it('shows minutes until a Copilot reset less than one hour away', () => {
     const segs = parser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota(inMinutes(30)) }), cfg);
 
     expect(segs.find(s => s.label === 'quota')?.value)
-      .toBe('~12,626/33,000 AIC ($126.26/$330.00) · 38% used · reset in 30m');
+      .toBe('~$126.26/$330.00 · 38% used · reset in 30m');
   });
 
   it('shows Copilot request quota used/limit without the approximate marker', () => {

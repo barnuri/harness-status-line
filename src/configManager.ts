@@ -12,6 +12,7 @@ export class ConfigManager {
     refreshInterval: 2000,
     // Sunday to Thursday.
     workDays: [0, 1, 2, 3, 4],
+    showAic: false,
     segments: {
       folder: true,
       git: true,
