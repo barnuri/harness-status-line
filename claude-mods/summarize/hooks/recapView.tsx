@@ -20,6 +20,7 @@ export class RecapView {
     tools: 'blueBright',
     files: 'white',
     links: 'cyanBright',
+    action: 'cyanBright',
     reviews: 'yellowBright',
     plans: 'blueBright',
     commits: 'green',
@@ -87,8 +88,9 @@ export class RecapView {
         </Box>
         <Box flexShrink={0} paddingRight={4}>
           <Text> </Text>
-          <Button key="open" label="summary" hotkey="r" onPress={handlers.onOpen} />
-          <Button key="hide" label="×" hotkey="x" onPress={handlers.onHide} />
+          {RecapView.action(elements, 'open', 'summary', handlers.onOpen, { hotkey: 'r' })}
+          <Text> </Text>
+          {RecapView.action(elements, 'hide', '×', handlers.onHide, { hotkey: 'x' })}
         </Box>
       </Box>
     )
@@ -158,7 +160,7 @@ export class RecapView {
       <Box flexDirection="column">
         <Text bold color={RecapView.COLORS.session}>◆ Answers ({all.length})  <Text dimColor>{answers?.session || answers?.slug || 'this session'}</Text></Text>
         {hidden > 0 && <Text dimColor>  {hidden} earlier, press q for all</Text>}
-        {html !== undefined && <Box flexDirection="row"><Button key="open-answers" plain label="open answers.html" hotkey="o" onPress={() => handlers.onOpenFile(html)} /></Box>}
+        {html !== undefined && <Box flexDirection="row">{RecapView.action(elements, 'open-answers', 'open answers.html', () => handlers.onOpenFile(html), { hotkey: 'o' })}</Box>}
         {items.map((item, index) => (
           <Box key={`answer-${index}`} flexDirection="column">
             <Text wrap="wrap"><Text bold color={RecapView.COLORS.accent}>{item.number.padEnd(5)}</Text><Text bold color={RecapView.COLORS.asked}>{item.answer}</Text></Text>
@@ -250,12 +252,12 @@ export class RecapView {
 
     return (
       <Box flexDirection="row" columnGap={2} marginTop={1}>
-        <Button key="previous" plain label="◀" hotkey="p" dimColor={selected.index <= first} onPress={handlers.onPrevious} />
-        <Button key="next" plain label="▶" hotkey="n" dimColor={selected.index >= last} onPress={handlers.onNext} />
-        <Button key="latest" plain label="⏭" hotkey="l" dimColor={selected.index >= last} onPress={handlers.onLatest} />
-        <Button key="toggle-history" plain label={layout.isHistoryOpen ? '☰ ▾' : '☰'} hotkey="h" onPress={handlers.onToggleHistory} />
-        <Button key="toggle-prompt" plain label={layout.isPromptOpen ? '✎ ▾' : '✎'} hotkey="i" onPress={handlers.onTogglePrompt} />
-        <Button key="toggle-qa" plain label={layout.isQaOpen ? 'Q&A ▾' : 'Q&A'} hotkey="q" onPress={handlers.onToggleQa} />
+        {RecapView.action(elements, 'previous', '◀', handlers.onPrevious, { hotkey: 'p', isDisabled: selected.index <= first })}
+        {RecapView.action(elements, 'next', '▶', handlers.onNext, { hotkey: 'n', isDisabled: selected.index >= last })}
+        {RecapView.action(elements, 'latest', '⏭', handlers.onLatest, { hotkey: 'l', isDisabled: selected.index >= last })}
+        {RecapView.action(elements, 'toggle-history', layout.isHistoryOpen ? '☰ ▾' : '☰', handlers.onToggleHistory, { hotkey: 'h' })}
+        {RecapView.action(elements, 'toggle-prompt', layout.isPromptOpen ? '✎ ▾' : '✎', handlers.onTogglePrompt, { hotkey: 'i' })}
+        {RecapView.action(elements, 'toggle-qa', layout.isQaOpen ? 'Q&A ▾' : 'Q&A', handlers.onToggleQa, { hotkey: 'q' })}
       </Box>
     )
   }
@@ -275,13 +277,13 @@ export class RecapView {
         {recent.map(entry => (
           <Box key={`history-${entry.index}`} flexDirection="row">
             <Text color={RecapView.COLORS.accent}>{entry.index === selected.index ? '› ' : '  '}</Text>
-            <Button
-              key={`jump-${entry.index}`}
-              plain
-              dimColor={entry.index !== selected.index}
-              label={`#${entry.index} ${RecapView.clock(entry.startedAt)} ${entry.summary}`}
-              onPress={() => handlers.onJump(entry.index)}
-            />
+            {RecapView.action(
+              elements,
+              `jump-${entry.index}`,
+              `#${entry.index} ${RecapView.clock(entry.startedAt)} ${entry.summary}`,
+              () => handlers.onJump(entry.index),
+              { isDisabled: entry.index !== selected.index },
+            )}
           </Box>
         ))}
       </Box>
@@ -315,16 +317,18 @@ export class RecapView {
     const { Box, Text, Button } = elements
 
     return (
-      <Box flexDirection="row" flexWrap="wrap">
-        <Text bold color={color}>{label.padEnd(RecapView.LABEL_WIDTH)}</Text>
+      <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+        <Text bold color={color}>{label.padEnd(RecapView.LABEL_WIDTH - 2)}</Text>
         {links.length === 0 && <Text dimColor>{RecapView.NONE}</Text>}
         {links.map(link => {
           const url = link.url
-          const text = `${link.isCreated === true ? '+ ' : ''}${link.label}`
+          const text = `${link.isCreated === true ? '+ ' : ''}${RecapView.shortLabel(link.label)}`
 
           return url === undefined
             ? <Text key={`${label}-${link.label}`}>{text} </Text>
-            : <Button key={`${label}-${link.label}`} plain label={text} onPress={() => handlers.onOpenFile(RecapView.openTarget(url))} />
+            : (
+              RecapView.action(elements, `${label}-${link.label}`, text, () => handlers.onOpenFile(RecapView.openTarget(url)))
+            )
         })}
       </Box>
     )
@@ -357,6 +361,33 @@ export class RecapView {
     }
 
     return showPaths ? files.map(file => RecapView.relative(file, cwd)) : [`${files.length} file${files.length === 1 ? '' : 's'}`]
+  }
+
+  /**
+   * The one style for everything clickable (links and buttons): underlined text in the action
+   * color, dimmed when it does nothing right now. See this mod's CLAUDE.md.
+   */
+  private static action(
+    elements: RecapViewElements,
+    key: string,
+    text: string,
+    onPress: () => void,
+    options: { hotkey?: string; isDisabled?: boolean } = {},
+  ): RenderElement {
+    const { Button, Text } = elements
+
+    return (
+      <Button key={key} plain {...(options.hotkey === undefined ? {} : { hotkey: options.hotkey })} onPress={onPress}>
+        <Text underline color={RecapView.COLORS.action} dimColor={options.isDisabled === true}>{text}</Text>
+      </Button>
+    )
+  }
+
+  /** A PR label `owner/repo#42` as `#42`; any other label unchanged. */
+  private static shortLabel(label: string): string {
+    const hash = label.lastIndexOf('#')
+
+    return hash > 0 ? label.slice(hash) : label
   }
 
   /** A `file://` URL as a plain path for `open`; any other URL unchanged. */

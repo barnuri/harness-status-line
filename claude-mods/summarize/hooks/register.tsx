@@ -20,6 +20,8 @@ const MAX_REPO_LOOKUPS = 8
 const GIT_TIMEOUT_MS = 3000
 const SESSION_DIRECTORY = '.'
 const SLUG_DIRECTORY = '.claude/session-slugs'
+const ERROR_LOG = '.claude/mod-errors/summarize.jsonl'
+const MAX_ERROR_LINES = 500
 const GH_TIMEOUT_MS = 5000
 const DEFAULT_BRANCHES = new Set(['main', 'master', 'develop', 'HEAD'])
 const branchPullRequests = new Map<string, IterationRecapLink>()
@@ -75,7 +77,7 @@ async function repoRoot($: EngineInterface, directory: string): Promise<string |
 
     return exitCode === 0 && stdout.trim() !== '' ? stdout.trim() : null
   } catch (error) {
-    $.ui.log(`${PLUGIN}: git lookup failed for ${directory}: ${error instanceof Error ? error.message : String(error)}`)
+    void logError($, `git lookup failed for ${directory}: ${error instanceof Error ? error.message : String(error)}`)
 
     return null
   }
@@ -99,7 +101,7 @@ async function repoState($: EngineInterface, root: string): Promise<string | nul
 
     return parts.join('\n')
   } catch (error) {
-    $.ui.log(`${PLUGIN}: git state failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
+    void logError($, `git state failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
 
     return null
   }
@@ -142,7 +144,7 @@ async function branchPullRequest($: EngineInterface, root: string): Promise<Iter
 
     return link
   } catch (error) {
-    $.ui.log(`${PLUGIN}: gh pr view failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
+    void logError($, `gh pr view failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
 
     return null
   }
@@ -152,12 +154,38 @@ function repoName(root: string): string {
   return root.split('/').at(-1) ?? root
 }
 
-function sessionAnswersPath(list: readonly IterationRecapEntry[]): string | null {
+/** The newest `answers.md` the session wrote or rendered that exists on disk. */
+async function sessionAnswersPath($: EngineInterface, list: readonly IterationRecapEntry[]): Promise<string | null> {
   const paths = list
     .flatMap(entry => [...entry.artifacts.files, ...(entry.artifacts.answerFiles ?? [])])
     .filter(path => AnswersReader.slugOf(path) !== null)
+  for (const path of [...new Set(paths)].reverse()) {
+    if (await $.fs.exists(path).catch(() => false)) {
+      return path
+    }
+  }
 
-  return paths.at(-1) ?? null
+  return null
+}
+
+/**
+ * Appends one error to `~/.claude/mod-errors/summarize.jsonl` (newest `MAX_ERROR_LINES` kept), so an
+ * audit can find and fix them, instead of printing them into the transcript.
+ */
+async function logError($: EngineInterface, text: string): Promise<void> {
+  try {
+    const home = await $.env.get('HOME')
+    if (home === undefined) {
+      return
+    }
+    const path = `${home}/${ERROR_LOG}`
+    const previous = (await $.fs.exists(path)) ? String(await $.fs.read(path)) : ''
+    const line = JSON.stringify({ ts: new Date(await $.clock.now()).toISOString(), plugin: PLUGIN, error: text })
+    const lines = [...previous.split('\n').filter(entry => entry !== ''), line].slice(-MAX_ERROR_LINES)
+    await $.fs.write(path, `${lines.join('\n')}\n`)
+  } catch {
+    // Logging must never break the mod.
+  }
 }
 
 /** Opens a file with the OS default app (`open` on macOS, `xdg-open` elsewhere). */
@@ -166,13 +194,13 @@ async function openFile($: EngineInterface, path: string): Promise<void> {
     const opener = (await $.env.get('OSTYPE'))?.startsWith('darwin') === false ? 'xdg-open' : 'open'
     await $.process.run([opener, path], { timeoutMs: GIT_TIMEOUT_MS })
   } catch (error) {
-    $.ui.log(`${PLUGIN}: open failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
+    void logError($, `open failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
 async function loadAnswers($: EngineInterface): Promise<void> {
   const list = await read($, iterations)
-  const path = (await publishedSlugAnswersPath($, list)) ?? sessionAnswersPath(list)
+  const path = (await publishedSlugAnswersPath($, list)) ?? (await sessionAnswersPath($, list))
   if (path === null) {
     return
   }
@@ -180,7 +208,7 @@ async function loadAnswers($: EngineInterface): Promise<void> {
     const text = await $.fs.read(path)
     await update($, answers, () => AnswersReader.parse(String(text), path))
   } catch (error) {
-    $.ui.log(`${PLUGIN}: answers read failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
+    void logError($, `answers read failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
@@ -210,7 +238,7 @@ async function publishedSlugAnswersPath($: EngineInterface, list: readonly Itera
 
     return null
   } catch (error) {
-    $.ui.log(`${PLUGIN}: published slug lookup failed: ${error instanceof Error ? error.message : String(error)}`)
+    void logError($, `published slug lookup failed: ${error instanceof Error ? error.message : String(error)}`)
 
     return null
   }
@@ -236,7 +264,7 @@ async function resolveRepos($: EngineInterface, entry: IterationRecapEntry, scop
 
     return { ...entry, artifacts: { ...entry.artifacts, repos, changedRepos, pullRequests: [...entry.artifacts.pullRequests, ...branchPrs] } }
   } catch (error) {
-    $.ui.log(`${PLUGIN}: repo lookup failed for iteration ${entry.index}: ${error instanceof Error ? error.message : String(error)}`)
+    void logError($, `repo lookup failed for iteration ${entry.index}: ${error instanceof Error ? error.message : String(error)}`)
 
     return { ...entry, artifacts: { ...entry.artifacts, changedRepos: ArtifactExtractor.createdPullRequestRepos(entry.artifacts) } }
   }

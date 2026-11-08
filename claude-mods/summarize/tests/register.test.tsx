@@ -40,8 +40,11 @@ function engineStubs(
   askResult = 'ok',
   opened: string[][] = [],
   home: string | undefined = undefined,
+  exists: (path: string) => boolean = path => path.includes('/agent-spec/'),
 ): void {
   on('env.get', async ($, e) => ({ value: e.name === 'HOME' ? home : undefined }))
+  on('fs.exists', async ($, e) => ({ value: exists(e.path) }))
+  on('fs.write', async () => ({ value: undefined }))
   on('turn.start', async ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', async ($, e) => ({ text: e.answer }))
   on('command.register', async ($, e) => ({ value: { command: e.name } }))
@@ -111,9 +114,8 @@ test('records an iteration with its artifacts and a deterministic summary', asyn
     expect((await ui.find({ type: 'Text', text: '1 file' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'Want me to merge it?' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'This session' }))).toBeDefined()
-    const labels = (await ui.findAll({ type: 'Button' })).map(button => button.props.label)
-    expect(labels).toContain('+ acme/web#42')
-    expect(labels).toContain('web')
+    expect(await ui.find({ type: 'Text', text: '+ #42' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'web' })).toBeDefined()
     expect((await ui.find({ type: 'Text', text: '/cr' }))).toBeDefined()
     await ui.unmount()
   }
@@ -366,9 +368,9 @@ test('shows file paths only with the showFilePaths option', { options: { showFil
 
 test('finds the answers.md of the slug session-slug published for this session', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
-  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', [], '/home/me')
+  const present = ['/home/me/.claude/session-slugs/sess-1', '/work/web/agent-spec/2026-11-08-x/answers.md']
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', [], '/home/me', path => present.includes(path))
   on('session.id', async () => ({ value: 'sess-1' }))
-  on('fs.exists', async ($, e) => ({ value: ['/home/me/.claude/session-slugs/sess-1', '/work/web/agent-spec/2026-11-08-x/answers.md'].includes(e.path) }))
   on('fs.read', async ($, e) => ({
     value: e.path === '/home/me/.claude/session-slugs/sess-1' ? '2026-11-08-x\n' : '### Q1 — Which port?\n\n**Answer:** 8888.\n',
   }))
