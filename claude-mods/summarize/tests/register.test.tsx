@@ -156,7 +156,7 @@ test('/summarize jumps by number and answers with a text recap', async ($, on) =
   expect(answer.text).toContain('https://github.com/acme/web/pull/42')
 })
 
-test('band shows the latest recap and hides on press', async ($, on) => {
+test('band shows the latest recap and hides on press', { options: { showBand: true } }, async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
 
@@ -172,7 +172,7 @@ test('band shows the latest recap and hides on press', async ($, on) => {
   await ui.unmount()
 })
 
-test('is active by default and opens after every new iteration', async ($, on) => {
+test('is active by default and opens after every new iteration', { options: { showBand: true } }, async ($, on) => {
   mock.clock(on, { now: 1_000 })
   const opened: string[] = []
   engineStubs(on, id => opened.push(id))
@@ -376,4 +376,14 @@ test('finds the answers.md of the slug session-slug published for this session',
 
   const answer = await $.command.run(SUMMARIZE)
   expect(answer.text).toContain('Q1 8888.')
+})
+
+test('the band is off by default', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  engineStubs(on)
+  await runIteration($, 't1', 'task', 'All done.')
+  await clock.advance(10)
+  const band = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...BAND })
+  expect(await band.find({ type: 'Text', text: /All done/ })).toBeUndefined()
+  await band.unmount()
 })

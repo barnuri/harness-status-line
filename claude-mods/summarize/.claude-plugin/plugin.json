@@ -16,8 +16,8 @@
     "showBand": {
       "type": "boolean",
       "title": "Show recap band",
-      "description": "Show the latest summary in a one-line band above the prompt",
-      "default": true
+      "description": "Show the latest summary in a one-line band above the prompt. Off by default",
+      "default": false
     }
   }
 }

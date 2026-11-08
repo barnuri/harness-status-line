@@ -231,7 +231,7 @@ async function resolveRepos($: EngineInterface, entry: IterationRecapEntry, scop
 export const register: Register = (on, options) => {
   const recorder = new IterationRecorder()
   let turnStartRepo: { root: string | null; state: string | null } = { root: null, state: null }
-  const isBandEnabled = options.showBand !== false
+  const isBandEnabled = options.showBand === true
   const showFilePaths = options.showFilePaths === true
 
   on('session.start', async ($, e, next) => {
