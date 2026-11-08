@@ -2,14 +2,14 @@ import type { Elements, RenderElement, RenderSurface } from 'claude-code'
 
 import { SessionTotals } from './sessionTotals'
 
-import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapPaneLayout, SessionAnswers } from '../types'
+import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapPaneLayout, SessionAnswer, SessionAnswers } from '../types'
 
 type RecapViewElements = Pick<Elements[RenderSurface], 'Box' | 'Text' | 'Button' | 'Link'>
 
 export class RecapView {
   private static readonly LABEL_WIDTH = 10
   private static readonly HISTORY_ROWS = 8
-  private static readonly MAX_ANSWERS = 6
+  private static readonly COLLAPSED_ANSWERS = 3
   private static readonly NONE = 'none'
   private static readonly COLORS = {
     accent: 'cyan',
@@ -53,7 +53,7 @@ export class RecapView {
       <Box flexDirection="column" minHeight={layout.bodyRows}>
         <Box flexDirection="column" flexGrow={1}>
           {RecapView.session(elements, iterations)}
-          {RecapView.answers(elements, answers)}
+          {RecapView.answers(elements, answers, iterations, layout.isQaOpen)}
           {RecapView.header(elements, selected, iterations.length)}
           <Text bold color={RecapView.COLORS.summary} wrap="wrap">{selected.summary}</Text>
           <Text> </Text>
@@ -109,7 +109,7 @@ export class RecapView {
       RecapView.alwaysTextRow('repos', SessionTotals.changedRepos(iterations).map(repo => repo.url ?? repo.label)),
       RecapView.alwaysTextRow('PRs', SessionTotals.pullRequests(iterations).map(pr => pr.url ?? pr.label)),
       RecapView.alwaysTextRow('skills', SessionTotals.skills(iterations)),
-      ...RecapView.answerLines(answers),
+      ...RecapView.answerLines(answers, iterations),
       `Iteration ${selected.index}/${iterations.length} · ${RecapView.clock(selected.startedAt)} · ${RecapView.duration(selected.durationMs)}`,
       selected.summary,
       RecapView.alwaysTextRow('tools', RecapView.toolList(selected)),
@@ -137,20 +137,30 @@ export class RecapView {
     )
   }
 
-  private static answers(elements: RecapViewElements, answers: SessionAnswers | null): RenderElement | null {
-    const { Box, Text } = elements
-    if (answers === null || answers.items.length === 0) {
+  private static answers(
+    elements: RecapViewElements,
+    answers: SessionAnswers | null,
+    iterations: readonly IterationRecapEntry[],
+    isQaOpen: boolean,
+  ): RenderElement | null {
+    const { Box, Text, Link } = elements
+    const all = RecapView.sessionAnswers(answers, iterations)
+    const items = isQaOpen ? all : all.slice(-RecapView.COLLAPSED_ANSWERS)
+    if (items.length === 0) {
       return null
     }
-    const shown = answers.items.slice(-RecapView.MAX_ANSWERS)
+    const hidden = all.length - items.length
+    const html = answers === null ? undefined : answers.path.replace(/\.md$/, '.html')
 
     return (
       <Box flexDirection="column">
-        <Text bold color={RecapView.COLORS.session}>◆ Answers  <Text dimColor>{answers.session || answers.slug}</Text></Text>
-        {shown.map(item => (
-          <Box key={`answer-${item.number}`} flexDirection="column">
-            <Text wrap="wrap"><Text bold color={RecapView.COLORS.accent}>{item.number.padEnd(5)}</Text><Text bold>{item.question}</Text></Text>
-            {item.answer !== '' && <Box paddingLeft={5}><Text color={RecapView.COLORS.asked} wrap="wrap">{item.answer}</Text></Box>}
+        <Text bold color={RecapView.COLORS.session}>◆ Answers ({all.length})  <Text dimColor>{answers?.session || answers?.slug || 'this session'}</Text></Text>
+        {hidden > 0 && <Text dimColor>  {hidden} earlier, press q for all</Text>}
+        {html !== undefined && <Box flexDirection="row"><Text dimColor>{'open'.padEnd(5)}</Text><Link href={`file://${html}`} label={html} /></Box>}
+        {items.map((item, index) => (
+          <Box key={`answer-${index}`} flexDirection="column">
+            <Text wrap="wrap"><Text bold color={RecapView.COLORS.accent}>{item.number.padEnd(5)}</Text><Text bold color={RecapView.COLORS.asked}>{item.answer}</Text></Text>
+            <Box paddingLeft={5}><Text dimColor wrap="wrap">↳ {item.question}</Text></Box>
           </Box>
         ))}
         <Text> </Text>
@@ -158,12 +168,25 @@ export class RecapView {
     )
   }
 
-  private static answerLines(answers: SessionAnswers | null): string[] {
-    if (answers === null || answers.items.length === 0) {
+  /** answers.md items first, then every answered ask of the session not already in the file. */
+  private static sessionAnswers(answers: SessionAnswers | null, iterations: readonly IterationRecapEntry[]): SessionAnswer[] {
+    const fromFile = (answers?.items ?? []).filter(item => item.answer !== '')
+    const known = new Set(fromFile.map(item => item.question))
+    const asked = iterations
+      .flatMap(entry => entry.artifacts.questions)
+      .filter(question => question.answer !== undefined && !known.has(question.fullText ?? question.text))
+      .map((question, index) => ({ number: `A${index + 1}`, question: question.fullText ?? question.text, answer: question.answer ?? '' }))
+
+    return [...fromFile, ...asked]
+  }
+
+  private static answerLines(answers: SessionAnswers | null, iterations: readonly IterationRecapEntry[]): string[] {
+    const items = RecapView.sessionAnswers(answers, iterations)
+    if (items.length === 0) {
       return []
     }
 
-    return [`Answers (${answers.session || answers.slug})`, ...answers.items.map(item => `${item.number} ${item.question}\n    ${item.answer}`)]
+    return [`Answers (${answers?.session || answers?.slug || 'this session'})`, ...items.map(item => `${item.number} ${item.answer}\n    ↳ ${item.question}`)]
   }
 
   private static header(elements: RecapViewElements, selected: IterationRecapEntry, total: number): RenderElement {
@@ -186,7 +209,7 @@ export class RecapView {
   private static details(elements: RecapViewElements, selected: IterationRecapEntry, cwd: string): RenderElement {
     const { Box } = elements
     const { artifacts } = selected
-    const answeredQuestions = artifacts.questions.filter(question => question.isAnswered).map(question => `✓ ${question.text}`)
+    const answeredQuestions = artifacts.questions.filter(question => question.isAnswered).map(question => `✓ ${question.answer ?? question.text}`)
 
     return (
       <Box flexDirection="column">
@@ -230,6 +253,7 @@ export class RecapView {
         <Button key="latest" plain label="⏭" hotkey="l" dimColor={selected.index >= last} onPress={handlers.onLatest} />
         <Button key="toggle-history" plain label={layout.isHistoryOpen ? '☰ ▾' : '☰'} hotkey="h" onPress={handlers.onToggleHistory} />
         <Button key="toggle-prompt" plain label={layout.isPromptOpen ? '✎ ▾' : '✎'} hotkey="i" onPress={handlers.onTogglePrompt} />
+        <Button key="toggle-qa" plain label={layout.isQaOpen ? 'Q&A ▾' : 'Q&A'} hotkey="q" onPress={handlers.onToggleQa} />
       </Box>
     )
   }

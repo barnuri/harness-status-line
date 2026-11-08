@@ -1,6 +1,6 @@
 export type IterationRecapLink = { label: string; url?: string; isCreated?: boolean; isBranch?: boolean };
 
-export type IterationRecapQuestion = { text: string; isAnswered: boolean };
+export type IterationRecapQuestion = { text: string; isAnswered: boolean; fullText?: string; answer?: string };
 
 export type IterationRecapGitFacts = {
   editedFiles: string[];
@@ -26,6 +26,7 @@ export type IterationRecapTurnEnd = {
 
 export type IterationRecapArtifacts = {
   files: string[];
+  answerFiles?: string[];
   skills: string[];
   repos: string[];
   changedRepos: IterationRecapLink[];
@@ -70,11 +71,13 @@ export type IterationRecapHandlers = {
   onHide: () => void;
   onTogglePrompt: () => void;
   onToggleHistory: () => void;
+  onToggleQa: () => void;
 };
 
 export type IterationRecapPaneLayout = {
   isPromptOpen: boolean;
   isHistoryOpen: boolean;
+  isQaOpen: boolean;
   bodyRows: number;
 };
 
@@ -93,6 +96,7 @@ declare module 'claude-code' {
       isActive: boolean;
       isPromptOpen: boolean;
       isHistoryOpen: boolean;
+      isQaOpen: boolean;
     };
   }
 }

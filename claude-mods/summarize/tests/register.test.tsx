@@ -27,6 +27,8 @@ const BAND = {
   },
 } as const
 
+const ASK = (question: string) => ({ question, header: 'h', options: [{ label: 'a', description: 'd' }, { label: 'b', description: 'd' }], multiSelect: false })
+
 const SUMMARIZE = { command: 'summarize', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } } as const
 
 function engineStubs(
@@ -35,6 +37,7 @@ function engineStubs(
   gitState: () => string = () => 'clean',
   onModel: () => void = () => undefined,
   ghPrView: string | null = null,
+  askResult = 'ok',
 ): void {
   on('turn.start', async ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', async ($, e) => ({ text: e.answer }))
@@ -68,6 +71,9 @@ function engineStubs(
     return <Box />
   })
   on('tool.call', async ($, e) => {
+    if (e.tool === 'AskUserQuestion') {
+      return { result: {}, text: askResult }
+    }
     if (e.tool === 'Bash') {
       return { result: { stdout: '', stderr: '', interrupted: false }, text: 'https://github.com/acme/web/pull/42' }
     }
@@ -206,7 +212,7 @@ test('shows the answers.md this session wrote, with no model call', async ($, on
 
   const answer = await $.command.run(SUMMARIZE)
   expect(answer.text).toContain('Answers (login fix)')
-  expect(answer.text).toContain('Q2 Keep the old route?')
+  expect(answer.text).toContain('Q2 No.\n    ↳ Keep the old route?')
   expect(answer.text).not.toContain('tests')
   expect(modelCalls).toBe(0)
 })
@@ -286,4 +292,60 @@ test('detects the open PR of the session repo branch with gh, like the footer', 
 
   const answer = await $.command.run(SUMMARIZE)
   expect(answer.text).toMatch(/PRs\s+https:\/\/github\.com\/chkp-genai\/keystone\/pull\/418/)
+})
+
+test('shows each ask answer first, with its question below', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null,
+    'User has answered your questions: "Which DB?"="Postgres, with a CHECK", "Ship today?"="No". You can now continue.')
+
+  await $.turn.start({ text: 'decide', turnId: 't1' })
+  await $.tool.call({ tool: 'AskUserQuestion', questions: [ASK('Which DB?'), ASK('Ship today?')] })
+  await $.turn.complete({ answer: 'Decided.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10)
+
+  const answer = await $.command.run(SUMMARIZE)
+  expect(answer.text).toContain('A1 Postgres, with a CHECK\n    ↳ Which DB?')
+  expect(answer.text).toContain('A2 No\n    ↳ Ship today?')
+  const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: 'Postgres, with a CHECK' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('finds an answers.md written through Bash and links its html', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const file = '/work/web/agent-spec/2026-11-08-db/answers.md'
+  engineStubs(on)
+  on('fs.read', async ($, e) => ({ value: e.path === file ? '### Q1 — Which DB?\n\n**Answer:** Postgres.\n' : '' }))
+
+  await $.turn.start({ text: 'record', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: "python3 render_answers.py '/work/web/agent-spec/2026-11-08-db/answers.md'" })
+  await $.turn.complete({ answer: 'Recorded.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10)
+
+  const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: 'Postgres.' })).toBeDefined()
+  const hrefs = (await ui.findAll({ type: 'Link' })).map(link => link.props.href)
+  expect(hrefs).toContain('file:///work/web/agent-spec/2026-11-08-db/answers.html')
+  await ui.unmount()
+})
+
+test('q shows every answer of the session, collapsed to the latest 3', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const file = '/work/web/agent-spec/2026-11-08-many/answers.md'
+  engineStubs(on)
+  const cards = [1, 2, 3, 4, 5].map(n => `### Q${n} — Question ${n}?\n\n**Answer:** Answer ${n}.\n\n---\n`).join('\n')
+  on('fs.read', async ($, e) => ({ value: e.path === file ? cards : '' }))
+
+  await $.turn.start({ text: 'record', turnId: 't1' })
+  await $.tool.call({ tool: 'Write', file_path: file, content: 'x' })
+  await $.turn.complete({ answer: 'Recorded.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10)
+
+  const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: 'Answer 1.' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'Answer 5.' })).toBeDefined()
+  await ui.press({ key: 'toggle-qa' })
+  expect(await ui.find({ type: 'Text', text: 'Answer 1.' })).toBeDefined()
+  await ui.unmount()
 })

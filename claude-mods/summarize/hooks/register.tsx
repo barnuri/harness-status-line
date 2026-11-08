@@ -33,6 +33,7 @@ const isActive = atom({ plugin: 'summarize', key: 'isActive' } as const, true)
 const answers = atom({ plugin: 'summarize', key: 'answers' } as const, null as SessionAnswers | null)
 const isPromptOpen = atom({ plugin: 'summarize', key: 'isPromptOpen' } as const, false)
 const isHistoryOpen = atom({ plugin: 'summarize', key: 'isHistoryOpen' } as const, false)
+const isQaOpen = atom({ plugin: 'summarize', key: 'isQaOpen' } as const, false)
 
 async function openPane($: EngineInterface): Promise<void> {
   await $.ui.open({ id: PANE, title: 'Summarize', rows: PANE_ROWS })
@@ -62,6 +63,7 @@ function handlersFor($: EngineInterface): IterationRecapHandlers {
     onHide: () => void update($, isBandHidden, () => true),
     onTogglePrompt: () => void update($, isPromptOpen, isOpen => !isOpen),
     onToggleHistory: () => void update($, isHistoryOpen, isOpen => !isOpen),
+    onToggleQa: () => void update($, isQaOpen, isOpen => !isOpen),
   }
 }
 
@@ -149,7 +151,9 @@ function repoName(root: string): string {
 }
 
 function sessionAnswersPath(list: readonly IterationRecapEntry[]): string | null {
-  const paths = list.flatMap(entry => entry.artifacts.files).filter(path => AnswersReader.slugOf(path) !== null)
+  const paths = list
+    .flatMap(entry => [...entry.artifacts.files, ...(entry.artifacts.answerFiles ?? [])])
+    .filter(path => AnswersReader.slugOf(path) !== null)
 
   return paths.at(-1) ?? null
 }
@@ -295,6 +299,7 @@ export const register: Register = (on, options) => {
     const layout = {
       isPromptOpen: await read($, isPromptOpen),
       isHistoryOpen: await read($, isHistoryOpen),
+      isQaOpen: await read($, isQaOpen),
       bodyRows: e.props.scroll.bodyRows,
     }
 

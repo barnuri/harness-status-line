@@ -43,10 +43,12 @@ export class ArtifactExtractor {
   private static readonly MIN_QUESTION_LENGTH = 12
   private static readonly MAX_ANSWER_QUESTIONS = 5
   private static readonly MAX_LABEL_LENGTH = 80
+  private static readonly ANSWER_FILE = /(\/[^\s"'`$]*\/agent-spec\/[^/\s"'`$]+\/answers)\.(?:md|html)\b/g
 
   public static extract(calls: readonly IterationRecapToolCall[], answer: string, prompt: string): IterationRecapArtifacts {
     return {
       files: ArtifactExtractor.files(calls),
+      answerFiles: ArtifactExtractor.answerFiles(calls),
       skills: ArtifactExtractor.skills(calls, prompt),
       repos: ArtifactExtractor.remoteRepos(calls, answer),
       changedRepos: [],
@@ -211,18 +213,66 @@ export class ArtifactExtractor {
     return [shortSha, subject].filter(part => part !== undefined && part !== '').join(' ')
   }
 
+  /** Absolute `agent-spec/<slug>/answers.md` paths a tool wrote or rendered, from inputs and results. */
+  private static answerFiles(calls: readonly IterationRecapToolCall[]): string[] {
+    const found = calls.flatMap(call => {
+      const text = `${JSON.stringify(call.input)}\n${call.resultText}`
+
+      return [...text.matchAll(ArtifactExtractor.ANSWER_FILE)].map(match => `${match[1]}.md`)
+    })
+
+    return [...new Set(found)]
+  }
+
   private static askedQuestions(calls: readonly IterationRecapToolCall[]): IterationRecapQuestion[] {
     return calls
       .filter(call => call.tool === 'AskUserQuestion')
       .flatMap(call => {
         const isAnswered = !call.isError && call.resultText.trim() !== ''
         const asked: unknown[] = Array.isArray(call.input.questions) ? call.input.questions : []
-
-        return asked
+        const texts = asked
           .map(item => ArtifactExtractor.stringField(item, 'question'))
           .filter((text): text is string => text !== undefined)
-          .map(text => ({ text: ArtifactExtractor.shorten(text), isAnswered }))
+        const answers = isAnswered ? ArtifactExtractor.pickedAnswers(texts, call.resultText) : new Map<string, string>()
+
+        return texts.map(text => ({
+          text: ArtifactExtractor.shorten(text),
+          fullText: text,
+          isAnswered,
+          ...(answers.has(text) ? { answer: answers.get(text) } : {}),
+        }))
       })
+  }
+
+  /** Answers from an ask result shaped `"<question>"="<answer>", "<question>"="<answer>". <tail>`. */
+  public static pickedAnswers(questions: readonly string[], result: string): Map<string, string> {
+    const starts = questions
+      .map(question => {
+        const marker = `"${question}"="`
+        const at = result.indexOf(marker)
+
+        return { question, at, from: at + marker.length }
+      })
+      .filter(found => found.at >= 0)
+      .sort((left, right) => left.at - right.at)
+    const picked = new Map<string, string>()
+    starts.forEach((found, index) => {
+      const next = starts[index + 1]
+      const segment = next === undefined ? result.slice(found.from) : result.slice(found.from, next.at)
+      const end = next === undefined ? ArtifactExtractor.lastAnswerEnd(segment) : segment.lastIndexOf('"')
+      const answer = (end >= 0 ? segment.slice(0, end) : segment).trim()
+      if (answer !== '') {
+        picked.set(found.question, answer)
+      }
+    })
+
+    return picked
+  }
+
+  private static lastAnswerEnd(segment: string): number {
+    const sentenceEnd = segment.indexOf('". ')
+
+    return sentenceEnd >= 0 ? sentenceEnd : segment.lastIndexOf('"')
   }
 
   private static answerQuestions(answer: string): IterationRecapQuestion[] {
