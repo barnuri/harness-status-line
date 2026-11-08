@@ -404,3 +404,15 @@ test('default-branch commits become sha6 + trimmed message links to the commit p
   expect(links[0]?.url).toBe(`https://github.com/acme/web/commit/${sha}`)
   expect(GitFacts.commitLinks(`${sha}\tlocal`, 'file:///work/web')[0]?.url).toBeUndefined()
 })
+
+test('last shows the current HEAD commit of the session repo', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const head = 'abcdef1234567890abcdef1234567890abcdef12\tFix the login redirect'
+  engineStubs(on, () => undefined, () => head)
+  await $.turn.start({ text: 'look', turnId: 't1' })
+  await $.turn.complete({ answer: 'Looked.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10)
+  const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: 'abcdef Fix the login redirect' })).toBeDefined()
+  await ui.unmount()
+})

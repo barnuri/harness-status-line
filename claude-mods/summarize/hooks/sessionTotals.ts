@@ -28,4 +28,12 @@ export class SessionTotals {
 
     return [...bySha.values()]
   }
+
+  /** The newest HEAD commit seen for each repo, prefixed with the repo name when there are several. */
+  public static lastCommits(iterations: readonly IterationRecapEntry[]): IterationRecapLink[] {
+    const byRepo = new Map(iterations.flatMap(entry => entry.artifacts.headCommits ?? []).map(link => [link.repo ?? '', link]))
+    const links = [...byRepo.values()]
+
+    return links.length < 2 ? links : links.map(link => ({ ...link, label: `${link.repo ?? ''} ${link.label}`.trim() }))
+  }
 }

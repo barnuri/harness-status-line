@@ -178,6 +178,23 @@ async function defaultBranchCommits($: EngineInterface, root: string, sinceMs: n
   }
 }
 
+/** The current HEAD commit of `root`, whoever made it, as `abc123 message` linking to its page; `repo` names the repo. */
+async function headCommit($: EngineInterface, root: string): Promise<IterationRecapLink | null> {
+  try {
+    const [log, remote] = await Promise.all([
+      gitOutput($, root, ['log', '-1', '--format=%H%x09%s', 'HEAD']),
+      gitOutput($, root, ['remote', 'get-url', 'origin']),
+    ])
+    const link = GitFacts.commitLinks(log, RepoLink.fromRoot(root, remote).url)[0]
+
+    return link === undefined ? null : { ...link, repo: repoName(root) }
+  } catch (error) {
+    void logError($, `head commit lookup failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
+
+    return null
+  }
+}
+
 function repoName(root: string): string {
   return root.split('/').at(-1) ?? root
 }
@@ -283,10 +300,11 @@ async function resolveRepos($: EngineInterface, entry: IterationRecapEntry, scop
     const repos = [...new Set([...[...allChangedRoots, ...touchedRoots].map(repoName), ...entry.artifacts.repos])]
     const uniqueChangedRoots = [...new Set(allChangedRoots)]
     const prRoots = [...new Set([...uniqueChangedRoots, ...touchedRoots, ...(scope.startRoot === null ? [] : [scope.startRoot])])]
-    const [rootLinks, branchLinks, commitLinks] = await Promise.all([
+    const [rootLinks, branchLinks, commitLinks, headLinks] = await Promise.all([
       repoLinks($, uniqueChangedRoots),
       Promise.all(prRoots.map(root => branchPullRequest($, root))),
       Promise.all(uniqueChangedRoots.map(root => defaultBranchCommits($, root, entry.startedAt))),
+      Promise.all(prRoots.map(root => headCommit($, root))),
     ])
     const changedRepos = RepoLink.unique([...rootLinks, ...ArtifactExtractor.createdPullRequestRepos(entry.artifacts)])
     const knownLabels = new Set(entry.artifacts.pullRequests.map(link => link.label))
@@ -294,7 +312,8 @@ async function resolveRepos($: EngineInterface, entry: IterationRecapEntry, scop
 
     return {
       ...entry,
-      artifacts: { ...entry.artifacts, repos, changedRepos, pullRequests: [...entry.artifacts.pullRequests, ...branchPrs], commitLinks: commitLinks.flat() },
+      artifacts: { ...entry.artifacts, repos, changedRepos, pullRequests: [...entry.artifacts.pullRequests, ...branchPrs], commitLinks: commitLinks.flat(),
+        headCommits: headLinks.filter((link): link is IterationRecapLink => link !== null) },
     }
   } catch (error) {
     void logError($, `repo lookup failed for iteration ${entry.index}: ${error instanceof Error ? error.message : String(error)}`)

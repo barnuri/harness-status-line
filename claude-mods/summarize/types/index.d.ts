@@ -1,4 +1,4 @@
-export type IterationRecapLink = { label: string; url?: string; isCreated?: boolean; isBranch?: boolean };
+export type IterationRecapLink = { label: string; url?: string; isCreated?: boolean; isBranch?: boolean; repo?: string };
 
 export type IterationRecapQuestion = { text: string; isAnswered: boolean; fullText?: string; answer?: string };
 
@@ -32,6 +32,7 @@ export type IterationRecapArtifacts = {
   changedRepos: IterationRecapLink[];
   pullRequests: IterationRecapLink[];
   commitLinks?: IterationRecapLink[];
+  headCommits?: IterationRecapLink[];
   reviews: string[];
   plans: string[];
   commits: string[];

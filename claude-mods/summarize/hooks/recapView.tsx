@@ -112,6 +112,7 @@ export class RecapView {
       RecapView.alwaysTextRow('repos', SessionTotals.changedRepos(iterations).map(repo => repo.url ?? repo.label)),
       RecapView.alwaysTextRow('PRs', SessionTotals.pullRequests(iterations).map(pr => pr.url ?? pr.label)),
       RecapView.textRow('commits', SessionTotals.commits(iterations).map(commit => commit.url ?? commit.label)),
+      RecapView.textRow('last', SessionTotals.lastCommits(iterations).map(commit => commit.url ?? commit.label)),
       RecapView.alwaysTextRow('skills', SessionTotals.skills(iterations)),
       ...RecapView.answerLines(answers, iterations),
       `Iteration ${selected.index}/${iterations.length} · ${RecapView.clock(selected.startedAt)} · ${RecapView.duration(selected.durationMs)}`,
@@ -136,6 +137,7 @@ export class RecapView {
         {RecapView.alwaysLinkRow(elements, 'repos', SessionTotals.changedRepos(iterations), RecapView.COLORS.changed, handlers)}
         {RecapView.alwaysLinkRow(elements, 'PRs', SessionTotals.pullRequests(iterations), RecapView.COLORS.links, handlers)}
         {SessionTotals.commits(iterations).length > 0 && RecapView.alwaysLinkRow(elements, 'commits', SessionTotals.commits(iterations), RecapView.COLORS.commits, handlers)}
+        {SessionTotals.lastCommits(iterations).length > 0 && RecapView.alwaysLinkRow(elements, 'last', SessionTotals.lastCommits(iterations), RecapView.COLORS.commits, handlers)}
         {RecapView.alwaysRow(elements, 'skills', SessionTotals.skills(iterations), RecapView.COLORS.skills)}
         <Text> </Text>
       </Box>
