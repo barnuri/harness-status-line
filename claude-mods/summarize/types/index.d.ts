@@ -46,7 +46,6 @@ export type IterationRecapEntry = {
   turnId: string;
   prompt: string;
   summary: string;
-  isSummaryFromModel: boolean;
   startedAt: number;
   durationMs: number;
   outputTokens: number;
@@ -79,10 +78,15 @@ export type IterationRecapPaneLayout = {
   bodyRows: number;
 };
 
+export type SessionAnswer = { number: string; question: string; answer: string };
+
+export type SessionAnswers = { path: string; slug: string; session: string; items: SessionAnswer[] };
+
 declare module 'claude-code' {
   interface PluginState {
     'summarize': {
       iterations: IterationRecapEntry[];
+      answers: SessionAnswers | null;
       cursor: number | null;
       isBandHidden: boolean;
       isPaneDismissed: boolean;

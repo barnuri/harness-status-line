@@ -59,7 +59,6 @@ export class IterationRecorder {
       turnId: end.turnId,
       prompt: isOwnTurn ? this.prompt : '',
       summary: RecapSummarizer.heuristic(end.answer, { artifacts, toolCounts }),
-      isSummaryFromModel: false,
       startedAt: isOwnTurn ? this.startedAt : finishedAt - end.durationMs,
       durationMs: end.durationMs,
       outputTokens: end.outputTokens,

@@ -84,7 +84,7 @@ async function runIteration($: Engine, turnId: string, prompt: string, answer: s
   await $.turn.complete({ answer, durationMs: 72_000, isAborted: false, turnId, reason: 'answer' })
 }
 
-test('records an iteration with its artifacts and an AI summary', { options: { summarizer: 'haiku' } }, async ($, on) => {
+test('records an iteration with its artifacts and a deterministic summary', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
 
@@ -95,7 +95,7 @@ test('records an iteration with its artifacts and an AI summary', { options: { s
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'summarize', surface, ...PANE })
     expect((await ui.find({ type: 'Text', text: /Iteration 1\/1/ }))).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: /Opened PR acme\/web#42/ }))).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: 'Fixed it and opened the PR.' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'src/login.ts' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'Want me to merge it?' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'This session' }))).toBeDefined()
@@ -110,7 +110,7 @@ test('records an iteration with its artifacts and an AI summary', { options: { s
   }
 })
 
-test('browses between iterations with prev, next and latest', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+test('browses between iterations with prev, next and latest', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
 
@@ -136,7 +136,7 @@ test('browses between iterations with prev, next and latest', { options: { summa
   await ui.unmount()
 })
 
-test('/summarize jumps by number and answers with a text recap', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+test('/summarize jumps by number and answers with a text recap', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
 
@@ -150,7 +150,7 @@ test('/summarize jumps by number and answers with a text recap', { options: { su
   expect(answer.text).toContain('https://github.com/acme/web/pull/42')
 })
 
-test('band shows the latest recap and hides on press', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+test('band shows the latest recap and hides on press', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
 
@@ -166,25 +166,52 @@ test('band shows the latest recap and hides on press', { options: { summarizer: 
   await ui.unmount()
 })
 
-test('stays hidden until /summarize, then opens after every new iteration', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+test('is active by default and opens after every new iteration', async ($, on) => {
   mock.clock(on, { now: 1_000 })
   const opened: string[] = []
   engineStubs(on, id => opened.push(id))
 
   await runIteration($, 't1', 'first task', 'First done.')
-  expect(opened).toEqual([])
-  const band = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...BAND })
-  expect(await band.find({ type: 'Text', text: /First done/ })).toBeUndefined()
-  await band.unmount()
-
-  await $.command.run(SUMMARIZE)
   expect(opened).toEqual(['summarize'])
+  const band = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...BAND })
+  expect(await band.find({ type: 'Text', text: /First done/ })).toBeDefined()
+  await band.unmount()
 
   await runIteration($, 't2', 'second task', 'Second done.')
   expect(opened).toEqual(['summarize', 'summarize'])
 })
 
-test('collapses the prompt by default and always shows skills, tools and the session repos and PRs', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+test('shows the answers.md this session wrote, with no model call', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  let modelCalls = 0
+  const file = '/work/web/agent-spec/2026-11-08-login/answers.md'
+  engineStubs(on, () => undefined, () => 'clean', () => { modelCalls += 1 })
+  on('fs.read', async ($, e) => ({
+    value: e.path === file
+      ? '> Session: login fix\n\n## Questions and Answers\n\n### Q1 — Which redirect target?\n\n**Answer:** The dashboard.\n\n---\n\n### Q2 — Keep the old route?\n\n**Answer:** No.\n\n## Verify during implementation\n\n- tests\n'
+      : '',
+  }))
+
+  await $.turn.start({ text: 'record answers', turnId: 't1' })
+  await $.tool.call({ tool: 'Write', file_path: file, content: 'x' })
+  await $.turn.complete({ answer: 'Recorded.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10)
+  await clock.settle()
+
+  const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: 'Which redirect target?' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'The dashboard.' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'No.' })).toBeDefined()
+  await ui.unmount()
+
+  const answer = await $.command.run(SUMMARIZE)
+  expect(answer.text).toContain('Answers (login fix)')
+  expect(answer.text).toContain('Q2 Keep the old route?')
+  expect(answer.text).not.toContain('tests')
+  expect(modelCalls).toBe(0)
+})
+
+test('collapses the prompt by default and always shows skills, tools and the session repos and PRs', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
 
@@ -204,7 +231,7 @@ test('collapses the prompt by default and always shows skills, tools and the ses
   await ui.unmount()
 })
 
-test('counts the session repo as changed when its git state moved during the turn', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+test('counts the session repo as changed when its git state moved during the turn', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   let state = 'before'
   engineStubs(on, () => undefined, () => state)
@@ -220,7 +247,7 @@ test('counts the session repo as changed when its git state moved during the tur
   expect(answer.text).toMatch(/This session\nrepos\s+file:\/\/\/work\/web/)
 })
 
-test('records skills from skill.prompt, typed before the turn or loaded during it', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+test('records skills from skill.prompt, typed before the turn or loaded during it', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
   on('skill.prompt', async ($, e) => ({ text: e.text }))
@@ -249,7 +276,7 @@ test('makes no model call by default and summarizes from the answer', async ($, 
   expect(modelCalls).toBe(0)
 })
 
-test('detects the open PR of the session repo branch with gh, like the footer', { options: { summarizer: 'heuristic' } }, async ($, on) => {
+test('detects the open PR of the session repo branch with gh, like the footer', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on, () => undefined, () => 'clean', () => undefined, '{"number":418,"url":"https://github.com/chkp-genai/keystone/pull/418"}')
 

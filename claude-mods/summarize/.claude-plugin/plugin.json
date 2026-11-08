@@ -1,26 +1,16 @@
 {
   "name": "summarize",
   "version": "0.1.0",
-  "description": "Summarizes every Claude Code iteration and lets you browse them: files, repos, PRs, reviews, plans, open questions",
+  "description": "Summarizes every Claude Code iteration deterministically (no model calls) and shows the session's answers.md Q&A: files, repos, PRs, reviews, plans, open questions",
   "author": {
     "name": "barnuri"
   },
   "types": "./types/index.d.ts",
   "userConfig": {
-    "summarizer": {
-      "type": "string",
-      "title": "Recap summarizer",
-      "description": "heuristic (default): deterministic, no model call, first sentence of the answer or a line built from the iteration facts; haiku: one-line AI summary per iteration",
-      "options": [
-        "heuristic",
-        "haiku"
-      ],
-      "default": "heuristic"
-    },
     "showBand": {
       "type": "boolean",
       "title": "Show recap band",
-      "description": "After /summarize, show the latest summary in a one-line band above the prompt",
+      "description": "Show the latest summary in a one-line band above the prompt",
       "default": true
     }
   }

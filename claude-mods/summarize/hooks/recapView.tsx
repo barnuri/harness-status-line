@@ -2,13 +2,14 @@ import type { Elements, RenderElement, RenderSurface } from 'claude-code'
 
 import { SessionTotals } from './sessionTotals'
 
-import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapPaneLayout } from '../types'
+import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapPaneLayout, SessionAnswers } from '../types'
 
 type RecapViewElements = Pick<Elements[RenderSurface], 'Box' | 'Text' | 'Button' | 'Link'>
 
 export class RecapView {
   private static readonly LABEL_WIDTH = 10
   private static readonly HISTORY_ROWS = 8
+  private static readonly MAX_ANSWERS = 6
   private static readonly NONE = 'none'
   private static readonly COLORS = {
     accent: 'cyan',
@@ -37,6 +38,7 @@ export class RecapView {
     cwd: string,
     layout: IterationRecapPaneLayout,
     handlers: IterationRecapHandlers,
+    answers: SessionAnswers | null = null,
   ): RenderElement {
     const { Box, Text } = elements
     if (selected === undefined) {
@@ -51,6 +53,7 @@ export class RecapView {
       <Box flexDirection="column" minHeight={layout.bodyRows}>
         <Box flexDirection="column" flexGrow={1}>
           {RecapView.session(elements, iterations)}
+          {RecapView.answers(elements, answers)}
           {RecapView.header(elements, selected, iterations.length)}
           <Text bold color={RecapView.COLORS.summary} wrap="wrap">{selected.summary}</Text>
           <Text> </Text>
@@ -91,7 +94,12 @@ export class RecapView {
     )
   }
 
-  public static commandText(selected: IterationRecapEntry | undefined, iterations: readonly IterationRecapEntry[], cwd: string): string {
+  public static commandText(
+    selected: IterationRecapEntry | undefined,
+    iterations: readonly IterationRecapEntry[],
+    cwd: string,
+    answers: SessionAnswers | null = null,
+  ): string {
     if (selected === undefined) {
       return 'No iterations recorded yet.'
     }
@@ -101,6 +109,7 @@ export class RecapView {
       RecapView.alwaysTextRow('repos', SessionTotals.changedRepos(iterations).map(repo => repo.url ?? repo.label)),
       RecapView.alwaysTextRow('PRs', SessionTotals.pullRequests(iterations).map(pr => pr.url ?? pr.label)),
       RecapView.alwaysTextRow('skills', SessionTotals.skills(iterations)),
+      ...RecapView.answerLines(answers),
       `Iteration ${selected.index}/${iterations.length} · ${RecapView.clock(selected.startedAt)} · ${RecapView.duration(selected.durationMs)}`,
       selected.summary,
       RecapView.alwaysTextRow('tools', RecapView.toolList(selected)),
@@ -128,6 +137,35 @@ export class RecapView {
     )
   }
 
+  private static answers(elements: RecapViewElements, answers: SessionAnswers | null): RenderElement | null {
+    const { Box, Text } = elements
+    if (answers === null || answers.items.length === 0) {
+      return null
+    }
+    const shown = answers.items.slice(-RecapView.MAX_ANSWERS)
+
+    return (
+      <Box flexDirection="column">
+        <Text bold color={RecapView.COLORS.session}>◆ Answers  <Text dimColor>{answers.session || answers.slug}</Text></Text>
+        {shown.map(item => (
+          <Box key={`answer-${item.number}`} flexDirection="column">
+            <Text wrap="wrap"><Text bold color={RecapView.COLORS.accent}>{item.number.padEnd(5)}</Text><Text bold>{item.question}</Text></Text>
+            {item.answer !== '' && <Box paddingLeft={5}><Text color={RecapView.COLORS.asked} wrap="wrap">{item.answer}</Text></Box>}
+          </Box>
+        ))}
+        <Text> </Text>
+      </Box>
+    )
+  }
+
+  private static answerLines(answers: SessionAnswers | null): string[] {
+    if (answers === null || answers.items.length === 0) {
+      return []
+    }
+
+    return [`Answers (${answers.session || answers.slug})`, ...answers.items.map(item => `${item.number} ${item.question}\n    ${item.answer}`)]
+  }
+
   private static header(elements: RecapViewElements, selected: IterationRecapEntry, total: number): RenderElement {
     const { Box, Text } = elements
     const facts = [
@@ -135,7 +173,6 @@ export class RecapView {
       RecapView.duration(selected.durationMs),
       selected.outputTokens > 0 ? `${RecapView.tokens(selected.outputTokens)} out` : '',
       selected.endReason === 'answer' ? '' : selected.endReason,
-      selected.isSummaryFromModel ? 'haiku' : '',
     ].filter(fact => fact !== '')
 
     return (

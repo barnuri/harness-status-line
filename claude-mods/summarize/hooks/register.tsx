@@ -1,15 +1,15 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
+import { AnswersReader } from './answersReader'
 import { ArtifactExtractor } from './artifactExtractor'
 import { IterationRecorder } from './iterationRecorder'
 import { RecapCursor } from './recapCursor'
-import { RecapSummarizer } from './recapSummarizer'
 import { GitFacts } from './gitFacts'
 import { RecapView } from './recapView'
 import { RepoLink } from './repoLink'
 
-import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapScope } from '../types'
+import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapScope, SessionAnswers } from '../types'
 
 const PLUGIN = 'summarize'
 const PANE = 'summarize'
@@ -18,7 +18,6 @@ const PANE_ROWS = 28
 const MAX_ITERATIONS = 200
 const MAX_REPO_LOOKUPS = 8
 const GIT_TIMEOUT_MS = 3000
-const ENRICH_DELAY_MS = 1
 const SESSION_DIRECTORY = '.'
 const GH_TIMEOUT_MS = 5000
 const DEFAULT_BRANCHES = new Set(['main', 'master', 'develop', 'HEAD'])
@@ -30,7 +29,8 @@ const iterations = atom({ plugin: 'summarize', key: 'iterations' } as const, [] 
 const cursor = atom({ plugin: 'summarize', key: 'cursor' } as const, null as number | null)
 const isBandHidden = atom({ plugin: 'summarize', key: 'isBandHidden' } as const, false)
 const isPaneDismissed = atom({ plugin: 'summarize', key: 'isPaneDismissed' } as const, false)
-const isActive = atom({ plugin: 'summarize', key: 'isActive' } as const, false)
+const isActive = atom({ plugin: 'summarize', key: 'isActive' } as const, true)
+const answers = atom({ plugin: 'summarize', key: 'answers' } as const, null as SessionAnswers | null)
 const isPromptOpen = atom({ plugin: 'summarize', key: 'isPromptOpen' } as const, false)
 const isHistoryOpen = atom({ plugin: 'summarize', key: 'isHistoryOpen' } as const, false)
 
@@ -63,10 +63,6 @@ function handlersFor($: EngineInterface): IterationRecapHandlers {
     onTogglePrompt: () => void update($, isPromptOpen, isOpen => !isOpen),
     onToggleHistory: () => void update($, isHistoryOpen, isOpen => !isOpen),
   }
-}
-
-async function patchEntry($: EngineInterface, index: number, patch: Partial<IterationRecapEntry>): Promise<void> {
-  await update($, iterations, list => list.map(entry => (entry.index === index ? { ...entry, ...patch } : entry)))
 }
 
 async function repoRoot($: EngineInterface, directory: string): Promise<string | null> {
@@ -152,18 +148,22 @@ function repoName(root: string): string {
   return root.split('/').at(-1) ?? root
 }
 
-async function summarize($: EngineInterface, entry: IterationRecapEntry, answer: string): Promise<void> {
-  const reply = await $.model.complete({
-    model: RecapSummarizer.MODEL,
-    system: RecapSummarizer.SYSTEM,
-    prompt: RecapSummarizer.buildPrompt(entry, answer),
-    maxTokens: RecapSummarizer.MAX_TOKENS,
-    effort: 'low',
-    timeoutMs: RecapSummarizer.TIMEOUT_MS,
-  })
-  const summary = reply.isAnswered ? RecapSummarizer.clean(reply.text) : null
-  if (summary !== null) {
-    await patchEntry($, entry.index, { summary, isSummaryFromModel: true })
+function sessionAnswersPath(list: readonly IterationRecapEntry[]): string | null {
+  const paths = list.flatMap(entry => entry.artifacts.files).filter(path => AnswersReader.slugOf(path) !== null)
+
+  return paths.at(-1) ?? null
+}
+
+async function loadAnswers($: EngineInterface): Promise<void> {
+  const path = sessionAnswersPath(await read($, iterations))
+  if (path === null) {
+    return
+  }
+  try {
+    const text = await $.fs.read(path)
+    await update($, answers, () => AnswersReader.parse(String(text), path))
+  } catch (error) {
+    $.ui.log(`${PLUGIN}: answers read failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
@@ -193,26 +193,9 @@ async function resolveRepos($: EngineInterface, entry: IterationRecapEntry, scop
   }
 }
 
-async function enrich($: EngineInterface, entry: IterationRecapEntry, answer: string, isModelSummary: boolean): Promise<void> {
-  const hasWork = answer.trim() !== '' || Object.keys(entry.toolCounts).length > 0
-  const shouldSummarize = isModelSummary && entry.endReason !== 'aborted' && hasWork
-  if (shouldSummarize) {
-    await summarize($, entry, answer)
-  }
-}
-
-async function enrichSafely($: EngineInterface, entry: IterationRecapEntry, answer: string, isModelSummary: boolean): Promise<void> {
-  try {
-    await enrich($, entry, answer, isModelSummary)
-  } catch (error) {
-    $.ui.log(`${PLUGIN}: recap enrichment failed for iteration ${entry.index}: ${error instanceof Error ? error.message : String(error)}`)
-  }
-}
-
 export const register: Register = (on, options) => {
   const recorder = new IterationRecorder()
   let turnStartRepo: { root: string | null; state: string | null } = { root: null, state: null }
-  const isModelSummary = options.summarizer === 'haiku'
   const isBandEnabled = options.showBand !== false
 
   on('session.start', async ($, e, next) => {
@@ -272,8 +255,8 @@ export const register: Register = (on, options) => {
     }
     const entry = await resolveRepos($, recorded, scope)
     await update($, iterations, current => [...current, entry].slice(-MAX_ITERATIONS))
+    await loadAnswers($)
     await autoOpenPane($)
-    $.clock.after(ENRICH_DELAY_MS, () => void enrichSafely($, entry, e.answer, isModelSummary))
 
     return done
   })
@@ -294,7 +277,7 @@ export const register: Register = (on, options) => {
     await update($, isPaneDismissed, () => false)
     await openPane($)
 
-    return { text: RecapView.commandText(RecapCursor.selected(list, target), list, await $.session.cwd()) }
+    return { text: RecapView.commandText(RecapCursor.selected(list, target), list, await $.session.cwd(), await read($, answers)) }
   })
 
   on('ui.close', async ($, e, next) => {
@@ -315,7 +298,7 @@ export const register: Register = (on, options) => {
       bodyRows: e.props.scroll.bodyRows,
     }
 
-    return RecapView.pane($.ui.resolve(e), list, selected, await $.session.cwd(), layout, handlersFor($))
+    return RecapView.pane($.ui.resolve(e), list, selected, await $.session.cwd(), layout, handlersFor($), await read($, answers))
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
