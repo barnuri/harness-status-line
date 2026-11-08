@@ -37,6 +37,7 @@ const isBandHidden = atom({ plugin: 'summarize', key: 'isBandHidden' } as const,
 const isPaneDismissed = atom({ plugin: 'summarize', key: 'isPaneDismissed' } as const, false)
 const isActive = atom({ plugin: 'summarize', key: 'isActive' } as const, true)
 const answers = atom({ plugin: 'summarize', key: 'answers' } as const, null as SessionAnswers | null)
+const sessionHead = atom({ plugin: 'summarize', key: 'sessionHead' } as const, null as IterationRecapLink | null)
 const isPromptOpen = atom({ plugin: 'summarize', key: 'isPromptOpen' } as const, false)
 const isHistoryOpen = atom({ plugin: 'summarize', key: 'isHistoryOpen' } as const, false)
 const isQaOpen = atom({ plugin: 'summarize', key: 'isQaOpen' } as const, true)
@@ -176,6 +177,19 @@ async function defaultBranchCommits($: EngineInterface, root: string, sinceMs: n
 
     return []
   }
+}
+
+let isSessionHeadLoading = false
+
+/** The session repo's HEAD commit, looked up once per load, so `last` shows before any turn ends. */
+async function loadSessionHead($: EngineInterface): Promise<void> {
+  if (isSessionHeadLoading) {
+    return
+  }
+  isSessionHeadLoading = true
+  const root = await repoRoot($, SESSION_DIRECTORY)
+  const head = root === null ? null : await headCommit($, root)
+  await update($, sessionHead, () => head)
 }
 
 /** The current HEAD commit of `root`, whoever made it, as `abc123 message` linking to its page; `repo` names the repo. */
@@ -335,6 +349,7 @@ export const register: Register = (on, options) => {
       argumentHint: '[prev|next|last|<n>|band]',
     })
     await autoOpenPane($)
+    void loadSessionHead($)
 
     return next(e)
   })
@@ -408,7 +423,7 @@ export const register: Register = (on, options) => {
     await update($, isPaneDismissed, () => false)
     await openPane($)
 
-    return { text: RecapView.commandText(RecapCursor.selected(list, target), list, await $.session.cwd(), await read($, answers), showFilePaths) }
+    return { text: RecapView.commandText(RecapCursor.selected(list, target), list, await $.session.cwd(), await read($, answers), showFilePaths, await read($, sessionHead)) }
   })
 
   on('ui.close', async ($, e, next) => {
@@ -431,7 +446,9 @@ export const register: Register = (on, options) => {
       bodyRows: e.props.scroll.bodyRows,
     }
 
-    return RecapView.pane($.ui.resolve(e), list, selected, await $.session.cwd(), layout, handlersFor($), await read($, answers))
+    void loadSessionHead($)
+
+    return RecapView.pane($.ui.resolve(e), list, selected, await $.session.cwd(), layout, handlersFor($), await read($, answers), await read($, sessionHead))
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

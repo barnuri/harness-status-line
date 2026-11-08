@@ -94,6 +94,7 @@ declare module 'claude-code' {
     'summarize': {
       iterations: IterationRecapEntry[];
       answers: SessionAnswers | null;
+      sessionHead: IterationRecapLink | null;
       cursor: number | null;
       isBandHidden: boolean;
       isPaneDismissed: boolean;

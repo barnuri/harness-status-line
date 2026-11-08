@@ -40,6 +40,7 @@ export class RecapView {
     layout: IterationRecapPaneLayout,
     handlers: IterationRecapHandlers,
     answers: SessionAnswers | null = null,
+    sessionHead: IterationRecapLink | null = null,
   ): RenderElement {
     const { Box, Text } = elements
     if (selected === undefined) {
@@ -53,7 +54,7 @@ export class RecapView {
     return (
       <Box flexDirection="column" minHeight={layout.bodyRows}>
         <Box flexDirection="column" flexGrow={1}>
-          {RecapView.session(elements, iterations, handlers)}
+          {RecapView.session(elements, iterations, handlers, sessionHead)}
           {RecapView.answers(elements, answers, iterations, layout.isQaOpen, handlers)}
           {RecapView.header(elements, selected, iterations.length)}
           <Text bold color={RecapView.COLORS.summary} wrap="wrap">{selected.summary}</Text>
@@ -102,6 +103,7 @@ export class RecapView {
     cwd: string,
     answers: SessionAnswers | null = null,
     showFilePaths = false,
+    sessionHead: IterationRecapLink | null = null,
   ): string {
     if (selected === undefined) {
       return 'No iterations recorded yet.'
@@ -112,7 +114,7 @@ export class RecapView {
       RecapView.alwaysTextRow('repos', SessionTotals.changedRepos(iterations).map(repo => repo.url ?? repo.label)),
       RecapView.alwaysTextRow('PRs', SessionTotals.pullRequests(iterations).map(pr => pr.url ?? pr.label)),
       RecapView.textRow('commits', SessionTotals.commits(iterations).map(commit => commit.url ?? commit.label)),
-      RecapView.textRow('last', SessionTotals.lastCommits(iterations).map(commit => commit.url ?? commit.label)),
+      RecapView.textRow('last', SessionTotals.lastCommits(iterations, sessionHead).map(commit => commit.url ?? commit.label)),
       RecapView.alwaysTextRow('skills', SessionTotals.skills(iterations)),
       ...RecapView.answerLines(answers, iterations),
       `Iteration ${selected.index}/${iterations.length} · ${RecapView.clock(selected.startedAt)} · ${RecapView.duration(selected.durationMs)}`,
@@ -128,16 +130,22 @@ export class RecapView {
     return lines.filter(line => line !== '').join('\n')
   }
 
-  private static session(elements: RecapViewElements, iterations: readonly IterationRecapEntry[], handlers: IterationRecapHandlers): RenderElement {
+  private static session(
+    elements: RecapViewElements,
+    iterations: readonly IterationRecapEntry[],
+    handlers: IterationRecapHandlers,
+    sessionHead: IterationRecapLink | null,
+  ): RenderElement {
     const { Box, Text } = elements
+    const last = SessionTotals.lastCommits(iterations, sessionHead)
 
     return (
       <Box flexDirection="column">
         <Text bold color={RecapView.COLORS.session}>◆ This session</Text>
         {RecapView.alwaysLinkRow(elements, 'repos', SessionTotals.changedRepos(iterations), RecapView.COLORS.changed, handlers)}
+        {last.length > 0 && RecapView.alwaysLinkRow(elements, 'last', last, RecapView.COLORS.commits, handlers)}
         {RecapView.alwaysLinkRow(elements, 'PRs', SessionTotals.pullRequests(iterations), RecapView.COLORS.links, handlers)}
         {SessionTotals.commits(iterations).length > 0 && RecapView.alwaysLinkRow(elements, 'commits', SessionTotals.commits(iterations), RecapView.COLORS.commits, handlers)}
-        {SessionTotals.lastCommits(iterations).length > 0 && RecapView.alwaysLinkRow(elements, 'last', SessionTotals.lastCommits(iterations), RecapView.COLORS.commits, handlers)}
         {RecapView.alwaysRow(elements, 'skills', SessionTotals.skills(iterations), RecapView.COLORS.skills)}
         <Text> </Text>
       </Box>

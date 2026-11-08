@@ -30,8 +30,9 @@ export class SessionTotals {
   }
 
   /** The newest HEAD commit seen for each repo, prefixed with the repo name when there are several. */
-  public static lastCommits(iterations: readonly IterationRecapEntry[]): IterationRecapLink[] {
-    const byRepo = new Map(iterations.flatMap(entry => entry.artifacts.headCommits ?? []).map(link => [link.repo ?? '', link]))
+  public static lastCommits(iterations: readonly IterationRecapEntry[], sessionHead: IterationRecapLink | null = null): IterationRecapLink[] {
+    const heads = [...(sessionHead === null ? [] : [sessionHead]), ...iterations.flatMap(entry => entry.artifacts.headCommits ?? [])]
+    const byRepo = new Map(heads.map(link => [link.repo ?? '', link]))
     const links = [...byRepo.values()]
 
     return links.length < 2 ? links : links.map(link => ({ ...link, label: `${link.repo ?? ''} ${link.label}`.trim() }))
