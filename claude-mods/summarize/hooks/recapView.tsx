@@ -148,7 +148,7 @@ export class RecapView {
     const all = RecapView.sessionAnswers(answers, iterations)
     const items = isQaOpen ? all : all.slice(-RecapView.COLLAPSED_ANSWERS)
     if (items.length === 0) {
-      return isQaOpen ? <Text dimColor>No answers yet: no ask answered since the mod loaded, and no answers.md for this session.</Text> : null
+      return null
     }
     const hidden = all.length - items.length
     const html = answers === null ? undefined : answers.path.replace(/\.md$/, '.html')
