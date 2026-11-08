@@ -57,7 +57,7 @@ export class RecapView {
           {RecapView.header(elements, selected, iterations.length)}
           <Text bold color={RecapView.COLORS.summary} wrap="wrap">{selected.summary}</Text>
           <Text> </Text>
-          {RecapView.details(elements, selected, cwd)}
+          {RecapView.details(elements, selected, cwd, layout)}
           {layout.isPromptOpen && RecapView.prompt(elements, selected)}
           {layout.isHistoryOpen && RecapView.history(elements, selected, iterations, handlers)}
         </Box>
@@ -99,6 +99,7 @@ export class RecapView {
     iterations: readonly IterationRecapEntry[],
     cwd: string,
     answers: SessionAnswers | null = null,
+    showFilePaths = false,
   ): string {
     if (selected === undefined) {
       return 'No iterations recorded yet.'
@@ -113,7 +114,7 @@ export class RecapView {
       `Iteration ${selected.index}/${iterations.length} · ${RecapView.clock(selected.startedAt)} · ${RecapView.duration(selected.durationMs)}`,
       selected.summary,
       RecapView.alwaysTextRow('tools', RecapView.toolList(selected)),
-      RecapView.textRow('files', artifacts.files.map(file => RecapView.relative(file, cwd))),
+      RecapView.textRow('files', RecapView.fileValues(artifacts.files, cwd, showFilePaths)),
       RecapView.textRow('reviews', artifacts.reviews),
       RecapView.textRow('plans', artifacts.plans.map(plan => RecapView.relative(plan, cwd))),
       RecapView.textRow('commits', artifacts.commits),
@@ -147,7 +148,7 @@ export class RecapView {
     const all = RecapView.sessionAnswers(answers, iterations)
     const items = isQaOpen ? all : all.slice(-RecapView.COLLAPSED_ANSWERS)
     if (items.length === 0) {
-      return null
+      return isQaOpen ? <Text dimColor>No answers yet: no ask answered since the mod loaded, and no answers.md for this session.</Text> : null
     }
     const hidden = all.length - items.length
     const html = answers === null ? undefined : answers.path.replace(/\.md$/, '.html')
@@ -206,7 +207,7 @@ export class RecapView {
     )
   }
 
-  private static details(elements: RecapViewElements, selected: IterationRecapEntry, cwd: string): RenderElement {
+  private static details(elements: RecapViewElements, selected: IterationRecapEntry, cwd: string, layout: IterationRecapPaneLayout): RenderElement {
     const { Box } = elements
     const { artifacts } = selected
     const answeredQuestions = artifacts.questions.filter(question => question.isAnswered).map(question => `✓ ${question.answer ?? question.text}`)
@@ -214,7 +215,7 @@ export class RecapView {
     return (
       <Box flexDirection="column">
         {RecapView.alwaysRow(elements, 'tools', RecapView.toolList(selected), RecapView.COLORS.tools)}
-        {RecapView.row(elements, 'files', artifacts.files.map(file => RecapView.relative(file, cwd)), RecapView.COLORS.files)}
+        {RecapView.row(elements, 'files', RecapView.fileValues(artifacts.files, cwd, layout.showFilePaths), RecapView.COLORS.files)}
         {RecapView.row(elements, 'reviews', artifacts.reviews, RecapView.COLORS.reviews)}
         {RecapView.row(elements, 'plans', artifacts.plans.map(plan => RecapView.relative(plan, cwd)), RecapView.COLORS.plans)}
         {RecapView.row(elements, 'commits', artifacts.commits, RecapView.COLORS.commits)}
@@ -332,6 +333,15 @@ export class RecapView {
 
   private static textRow(label: string, values: readonly string[]): string {
     return values.length === 0 ? '' : RecapView.alwaysTextRow(label, values)
+  }
+
+  /** File paths when `showPaths`, else one count such as `3 files`. */
+  private static fileValues(files: readonly string[], cwd: string, showPaths: boolean): string[] {
+    if (files.length === 0) {
+      return []
+    }
+
+    return showPaths ? files.map(file => RecapView.relative(file, cwd)) : [`${files.length} file${files.length === 1 ? '' : 's'}`]
   }
 
   private static relative(path: string, cwd: string): string {

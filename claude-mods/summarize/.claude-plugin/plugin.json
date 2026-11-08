@@ -7,6 +7,12 @@
   },
   "types": "./types/index.d.ts",
   "userConfig": {
+    "showFilePaths": {
+      "type": "boolean",
+      "title": "Show file paths",
+      "description": "List every edited file path. Off (default): show only the file count",
+      "default": false
+    },
     "showBand": {
       "type": "boolean",
       "title": "Show recap band",

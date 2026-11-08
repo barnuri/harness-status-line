@@ -19,6 +19,7 @@ const MAX_ITERATIONS = 200
 const MAX_REPO_LOOKUPS = 8
 const GIT_TIMEOUT_MS = 3000
 const SESSION_DIRECTORY = '.'
+const SLUG_DIRECTORY = '.claude/session-slugs'
 const GH_TIMEOUT_MS = 5000
 const DEFAULT_BRANCHES = new Set(['main', 'master', 'develop', 'HEAD'])
 const branchPullRequests = new Map<string, IterationRecapLink>()
@@ -63,7 +64,7 @@ function handlersFor($: EngineInterface): IterationRecapHandlers {
     onHide: () => void update($, isBandHidden, () => true),
     onTogglePrompt: () => void update($, isPromptOpen, isOpen => !isOpen),
     onToggleHistory: () => void update($, isHistoryOpen, isOpen => !isOpen),
-    onToggleQa: () => void update($, isQaOpen, isOpen => !isOpen),
+    onToggleQa: () => void update($, isQaOpen, isOpen => !isOpen).then(() => loadAnswers($)),
   }
 }
 
@@ -159,7 +160,8 @@ function sessionAnswersPath(list: readonly IterationRecapEntry[]): string | null
 }
 
 async function loadAnswers($: EngineInterface): Promise<void> {
-  const path = sessionAnswersPath(await read($, iterations))
+  const list = await read($, iterations)
+  const path = sessionAnswersPath(list) ?? (await publishedSlugAnswersPath($, list))
   if (path === null) {
     return
   }
@@ -168,6 +170,35 @@ async function loadAnswers($: EngineInterface): Promise<void> {
     await update($, answers, () => AnswersReader.parse(String(text), path))
   } catch (error) {
     $.ui.log(`${PLUGIN}: answers read failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/** The `answers.md` of the slug the session-slug skill published for this session, in the session repo or a repo the session edited. */
+async function publishedSlugAnswersPath($: EngineInterface, list: readonly IterationRecapEntry[]): Promise<string | null> {
+  try {
+    const home = await $.env.get('HOME')
+    if (home === undefined) {
+      return null
+    }
+    const slugFile = `${home}/${SLUG_DIRECTORY}/${await $.session.id()}`
+    if (!(await $.fs.exists(slugFile))) {
+      return null
+    }
+    const slug = String(await $.fs.read(slugFile)).trim()
+    const editedDirectories = list.flatMap(entry => entry.artifacts.files).map(file => file.slice(0, file.lastIndexOf('/')))
+    const roots = await repoRoots($, [SESSION_DIRECTORY, ...new Set(editedDirectories)])
+    for (const root of roots) {
+      const candidate = `${root}/agent-spec/${slug}/${AnswersReader.FILE_NAME}`
+      if (await $.fs.exists(candidate)) {
+        return candidate
+      }
+    }
+
+    return null
+  } catch (error) {
+    $.ui.log(`${PLUGIN}: published slug lookup failed: ${error instanceof Error ? error.message : String(error)}`)
+
+    return null
   }
 }
 
@@ -201,6 +232,7 @@ export const register: Register = (on, options) => {
   const recorder = new IterationRecorder()
   let turnStartRepo: { root: string | null; state: string | null } = { root: null, state: null }
   const isBandEnabled = options.showBand !== false
+  const showFilePaths = options.showFilePaths === true
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -268,6 +300,7 @@ export const register: Register = (on, options) => {
   on('command.run', { command: COMMAND }, async ($, e) => {
     const word = e.args.trim().toLowerCase()
     await update($, isActive, () => true)
+    await loadAnswers($)
     if (word === 'band') {
       const isHidden = await read($, isBandHidden)
       await update($, isBandHidden, () => !isHidden)
@@ -281,7 +314,7 @@ export const register: Register = (on, options) => {
     await update($, isPaneDismissed, () => false)
     await openPane($)
 
-    return { text: RecapView.commandText(RecapCursor.selected(list, target), list, await $.session.cwd(), await read($, answers)) }
+    return { text: RecapView.commandText(RecapCursor.selected(list, target), list, await $.session.cwd(), await read($, answers), showFilePaths) }
   })
 
   on('ui.close', async ($, e, next) => {
@@ -300,6 +333,7 @@ export const register: Register = (on, options) => {
       isPromptOpen: await read($, isPromptOpen),
       isHistoryOpen: await read($, isHistoryOpen),
       isQaOpen: await read($, isQaOpen),
+      showFilePaths,
       bodyRows: e.props.scroll.bodyRows,
     }
 

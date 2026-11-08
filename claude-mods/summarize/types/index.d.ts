@@ -78,6 +78,7 @@ export type IterationRecapPaneLayout = {
   isPromptOpen: boolean;
   isHistoryOpen: boolean;
   isQaOpen: boolean;
+  showFilePaths: boolean;
   bodyRows: number;
 };
 

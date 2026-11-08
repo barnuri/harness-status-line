@@ -102,7 +102,7 @@ test('records an iteration with its artifacts and a deterministic summary', asyn
     const ui = await $.ui.mount({ plugin: 'summarize', surface, ...PANE })
     expect((await ui.find({ type: 'Text', text: /Iteration 1\/1/ }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'Fixed it and opened the PR.' }))).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: 'src/login.ts' }))).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: '1 file' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'Want me to merge it?' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'This session' }))).toBeDefined()
     const hrefs = (await ui.findAll({ type: 'Link' })).map(link => link.props.href)
@@ -348,4 +348,32 @@ test('q shows every answer of the session, collapsed to the latest 3', async ($,
   await ui.press({ key: 'toggle-qa' })
   expect(await ui.find({ type: 'Text', text: 'Answer 1.' })).toBeDefined()
   await ui.unmount()
+})
+
+test('shows file paths only with the showFilePaths option', { options: { showFilePaths: true } }, async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  engineStubs(on)
+  await runIteration($, 't1', 'fix it', 'Fixed.')
+  await clock.advance(10)
+  const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: 'src/login.ts' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('finds the answers.md of the slug session-slug published for this session', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  engineStubs(on)
+  on('env.get', async ($, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }))
+  on('session.id', async () => ({ value: 'sess-1' }))
+  on('fs.exists', async ($, e) => ({ value: ['/home/me/.claude/session-slugs/sess-1', '/work/web/agent-spec/2026-11-08-x/answers.md'].includes(e.path) }))
+  on('fs.read', async ($, e) => ({
+    value: e.path === '/home/me/.claude/session-slugs/sess-1' ? '2026-11-08-x\n' : '### Q1 — Which port?\n\n**Answer:** 8888.\n',
+  }))
+
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await $.turn.complete({ answer: 'Hi.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10)
+
+  const answer = await $.command.run(SUMMARIZE)
+  expect(answer.text).toContain('Q1 8888.')
 })
