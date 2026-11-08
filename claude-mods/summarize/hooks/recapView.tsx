@@ -114,7 +114,8 @@ export class RecapView {
       RecapView.alwaysTextRow('repos', SessionTotals.changedRepos(iterations).map(repo => repo.url ?? repo.label)),
       RecapView.alwaysTextRow('PRs', SessionTotals.pullRequests(iterations).map(pr => pr.url ?? pr.label)),
       RecapView.textRow('commits', SessionTotals.commits(iterations).map(commit => commit.url ?? commit.label)),
-      RecapView.textRow('last', SessionTotals.lastCommits(iterations, sessionHead).map(commit => commit.url ?? commit.label)),
+      ...SessionTotals.lastCommits(iterations, sessionHead).map((commit, index) =>
+        `${(index === 0 ? 'last' : '').padEnd(RecapView.LABEL_WIDTH)}${commit.repo === undefined ? '' : `${commit.repo} `}${commit.url ?? commit.label}`),
       RecapView.alwaysTextRow('skills', SessionTotals.skills(iterations)),
       ...RecapView.answerLines(answers, iterations),
       `Iteration ${selected.index}/${iterations.length} · ${RecapView.clock(selected.startedAt)} · ${RecapView.duration(selected.durationMs)}`,
@@ -143,7 +144,7 @@ export class RecapView {
       <Box flexDirection="column">
         <Text bold color={RecapView.COLORS.session}>◆ This session</Text>
         {RecapView.alwaysLinkRow(elements, 'repos', SessionTotals.changedRepos(iterations), RecapView.COLORS.changed, handlers)}
-        {last.length > 0 && RecapView.alwaysLinkRow(elements, 'last', last, RecapView.COLORS.commits, handlers)}
+        {last.length > 0 && RecapView.commitLines(elements, 'last', last, handlers)}
         {RecapView.alwaysLinkRow(elements, 'PRs', SessionTotals.pullRequests(iterations), RecapView.COLORS.links, handlers)}
         {SessionTotals.commits(iterations).length > 0 && RecapView.alwaysLinkRow(elements, 'commits', SessionTotals.commits(iterations), RecapView.COLORS.commits, handlers)}
         {RecapView.alwaysRow(elements, 'skills', SessionTotals.skills(iterations), RecapView.COLORS.skills)}
@@ -392,6 +393,38 @@ export class RecapView {
       <Button key={key} plain {...(options.hotkey === undefined ? {} : { hotkey: options.hotkey })} onPress={onPress}>
         <Text underline color={RecapView.COLORS.action} dimColor={options.isDisabled === true}>{text}</Text>
       </Button>
+    )
+  }
+
+  /**
+   * One line per repo: the row label on the first line only, the repo name dimmed when there are
+   * several repos, then the commit as an action.
+   */
+  private static commitLines(
+    elements: RecapViewElements,
+    label: string,
+    commits: readonly IterationRecapLink[],
+    handlers: IterationRecapHandlers,
+  ): RenderElement {
+    const { Box, Text } = elements
+    const repoWidth = commits.length < 2 ? 0 : Math.max(...commits.map(commit => (commit.repo ?? '').length)) + 1
+
+    return (
+      <Box flexDirection="column">
+        {commits.map((commit, index) => {
+          const url = commit.url
+
+          return (
+            <Box key={`${label}-${commit.repo ?? ''}-${index}`} flexDirection="row">
+              <Text bold color={RecapView.COLORS.commits}>{(index === 0 ? label : '').padEnd(RecapView.LABEL_WIDTH)}</Text>
+              {repoWidth > 0 && <Text dimColor>{(commit.repo ?? '').padEnd(repoWidth)}</Text>}
+              {url === undefined
+                ? <Text>{commit.label}</Text>
+                : RecapView.action(elements, `${label}-${commit.repo ?? ''}`, commit.label, () => handlers.onOpenFile(url))}
+            </Box>
+          )
+        })}
+      </Box>
     )
   }
 

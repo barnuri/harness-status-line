@@ -3,6 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { GitFacts } from '../hooks/gitFacts'
+import { SessionTotals } from '../hooks/sessionTotals'
 
 const PANE = {
   component: 'Pane',
@@ -415,4 +416,11 @@ test('last shows the current HEAD commit of the session repo', async ($, on) => 
   const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: 'abcdef Fix the login redirect' })).toBeDefined()
   await ui.unmount()
+})
+
+test('last keeps one newest commit per repo, session repo first', async () => {
+  const head = (repo: string, label: string) => ({ repo, label, url: `https://github.com/acme/${repo}/commit/x` })
+  const entry = (heads: ReturnType<typeof head>[]) => ({ artifacts: { headCommits: heads } }) as never
+  const last = SessionTotals.lastCommits([entry([head('web', 'aaa111 one'), head('api', 'bbb222 two')]), entry([head('web', 'ccc333 three')])], head('web', 'zzz000 start'))
+  expect(last.map(commit => `${commit.repo} ${commit.label}`)).toEqual(['web ccc333 three', 'api bbb222 two'])
 })

@@ -17,7 +17,7 @@ Deterministic iteration recap pane for Claude Code. It makes no model calls, eve
   touched, plus PRs it created. `commits` lists commits made on a default branch (`main`,
   `master`, `develop`) during each turn, as `sha6 message` (message cut to 40 characters), each
   opening its commit page. `last` shows each touched repo's current HEAD commit, whoever made it, in
-  the same format.
+  the same format, one line per repo with the repo name dimmed before it when there are several.
 - **Counts over lists.** The files row shows a count. The `showFilePaths` option lists paths.
 
 ## Errors
