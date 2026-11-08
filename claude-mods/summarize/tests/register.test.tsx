@@ -2,6 +2,8 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import { GitFacts } from '../hooks/gitFacts'
+
 const PANE = {
   component: 'Pane',
   requestId: 'summarize',
@@ -391,4 +393,14 @@ test('the band is off by default', async ($, on) => {
   const band = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...BAND })
   expect(await band.find({ type: 'Text', text: /All done/ })).toBeUndefined()
   await band.unmount()
+})
+
+test('default-branch commits become sha6 + trimmed message links to the commit page', async () => {
+  const sha = 'abcdef1234567890abcdef1234567890abcdef12'
+  const links = GitFacts.commitLinks(`${sha}\tA very long commit subject that keeps going past forty characters\n`, 'https://github.com/acme/web')
+  expect(links).toHaveLength(1)
+  expect(links[0]?.label.startsWith('abcdef A very long commit subject')).toBe(true)
+  expect(links[0]?.label.length).toBeLessThanOrEqual(6 + 1 + 40)
+  expect(links[0]?.url).toBe(`https://github.com/acme/web/commit/${sha}`)
+  expect(GitFacts.commitLinks(`${sha}\tlocal`, 'file:///work/web')[0]?.url).toBeUndefined()
 })

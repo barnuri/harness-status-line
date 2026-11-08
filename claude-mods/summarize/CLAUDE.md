@@ -13,6 +13,10 @@ Deterministic iteration recap pane for Claude Code. It makes no model calls, eve
 - **Empty means hidden.** A section with nothing to show renders nothing, with no placeholder text.
 - **Answers before questions.** The Q&A section shows each answer first and its question dimmed
   below. It is open by default; `q` collapses it.
+- **Session work rows.** `PRs` lists the open PR of the current branch for every repo the session
+  touched, plus PRs it created. `commits` lists commits made on a default branch (`main`,
+  `master`, `develop`) during each turn, as `sha6 message` (message cut to 40 characters), each
+  opening its commit page.
 - **Counts over lists.** The files row shows a count. The `showFilePaths` option lists paths.
 
 ## Errors

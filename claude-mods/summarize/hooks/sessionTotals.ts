@@ -21,4 +21,11 @@ export class SessionTotals {
 
     return [...byLabel.values()]
   }
+
+  /** Default-branch commits of the session, newest last, one per sha. */
+  public static commits(iterations: readonly IterationRecapEntry[]): IterationRecapLink[] {
+    const bySha = new Map(iterations.flatMap(entry => entry.artifacts.commitLinks ?? []).map(link => [link.label.split(' ')[0], link]))
+
+    return [...bySha.values()]
+  }
 }

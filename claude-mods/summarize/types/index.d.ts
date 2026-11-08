@@ -31,6 +31,7 @@ export type IterationRecapArtifacts = {
   repos: string[];
   changedRepos: IterationRecapLink[];
   pullRequests: IterationRecapLink[];
+  commitLinks?: IterationRecapLink[];
   reviews: string[];
   plans: string[];
   commits: string[];

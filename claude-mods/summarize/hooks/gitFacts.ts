@@ -1,7 +1,11 @@
+import { TextFormat } from './textFormat'
+
 import type { IterationRecapGitFacts, IterationRecapLink } from '../types'
 
 export class GitFacts {
   private static readonly MAX_FILES = 200
+  private static readonly SHORT_SHA = 6
+  private static readonly MAX_SUBJECT = 40
   private static readonly PULL_REQUEST_URL = /github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/
 
   public static branchPullRequest(ghJson: string): IterationRecapLink | null {
@@ -72,5 +76,19 @@ export class GitFacts {
 
   private static string(value: unknown): string | undefined {
     return typeof value === 'string' && value !== '' ? value : undefined
+  }
+
+  /** `git log --format=%H%x09%s` lines as `abc123 message` links, to the commit page on an http remote. */
+  public static commitLinks(log: string, repoUrl: string | undefined): IterationRecapLink[] {
+    const isWeb = repoUrl?.startsWith('http') === true
+
+    return log
+      .split('\n')
+      .map(line => line.split('\t'))
+      .filter((parts): parts is [string, string] => parts.length >= 2 && /^[0-9a-f]{40}$/.test(parts[0] ?? ''))
+      .map(([sha, subject]) => ({
+        label: `${sha.slice(0, GitFacts.SHORT_SHA)} ${TextFormat.truncate(subject, GitFacts.MAX_SUBJECT)}`,
+        ...(isWeb ? { url: `${repoUrl}/commit/${sha}` } : {}),
+      }))
   }
 }

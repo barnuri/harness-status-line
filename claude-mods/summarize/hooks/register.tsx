@@ -23,6 +23,9 @@ const SLUG_DIRECTORY = '.claude/session-slugs'
 const ERROR_LOG = '.claude/mod-errors/summarize.jsonl'
 const MAX_ERROR_LINES = 500
 const GH_TIMEOUT_MS = 5000
+const MS_PER_SECOND = 1000
+const COMMIT_CLOCK_SLACK_SECONDS = 5
+const MAX_TURN_COMMITS = 20
 const DEFAULT_BRANCHES = new Set(['main', 'master', 'develop', 'HEAD'])
 const branchPullRequests = new Map<string, IterationRecapLink>()
 const GIT_STATE_COMMANDS = [['rev-parse', 'HEAD'], ['status', '--porcelain'], ['diff', 'HEAD', '--numstat']] as const
@@ -150,6 +153,31 @@ async function branchPullRequest($: EngineInterface, root: string): Promise<Iter
   }
 }
 
+/**
+ * Commits made on a default branch of `root` since `sinceMs`, as `abc123 message` links to the
+ * commit page. Feature branches are skipped: their work shows as a PR.
+ */
+async function defaultBranchCommits($: EngineInterface, root: string, sinceMs: number): Promise<IterationRecapLink[]> {
+  try {
+    const branch = (await gitOutput($, root, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
+    if (!DEFAULT_BRANCHES.has(branch)) {
+      return []
+    }
+    const since = Math.floor(sinceMs / MS_PER_SECOND) - COMMIT_CLOCK_SLACK_SECONDS
+    const [log, remote] = await Promise.all([
+      gitOutput($, root, ['log', `--since=@${since}`, `-n${MAX_TURN_COMMITS}`, '--format=%H%x09%s', 'HEAD']),
+      gitOutput($, root, ['remote', 'get-url', 'origin']),
+    ])
+    const repoUrl = RepoLink.fromRoot(root, remote).url
+
+    return GitFacts.commitLinks(log, repoUrl)
+  } catch (error) {
+    void logError($, `commit lookup failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
+
+    return []
+  }
+}
+
 function repoName(root: string): string {
   return root.split('/').at(-1) ?? root
 }
@@ -254,15 +282,20 @@ async function resolveRepos($: EngineInterface, entry: IterationRecapEntry, scop
     const allChangedRoots = isSessionRepoChanged && scope.startRoot !== null ? [scope.startRoot, ...changedRoots] : changedRoots
     const repos = [...new Set([...[...allChangedRoots, ...touchedRoots].map(repoName), ...entry.artifacts.repos])]
     const uniqueChangedRoots = [...new Set(allChangedRoots)]
-    const [rootLinks, branchLinks] = await Promise.all([
+    const prRoots = [...new Set([...uniqueChangedRoots, ...touchedRoots, ...(scope.startRoot === null ? [] : [scope.startRoot])])]
+    const [rootLinks, branchLinks, commitLinks] = await Promise.all([
       repoLinks($, uniqueChangedRoots),
-      Promise.all([...new Set([...uniqueChangedRoots, ...(scope.startRoot === null ? [] : [scope.startRoot])])].map(root => branchPullRequest($, root))),
+      Promise.all(prRoots.map(root => branchPullRequest($, root))),
+      Promise.all(uniqueChangedRoots.map(root => defaultBranchCommits($, root, entry.startedAt))),
     ])
     const changedRepos = RepoLink.unique([...rootLinks, ...ArtifactExtractor.createdPullRequestRepos(entry.artifacts)])
     const knownLabels = new Set(entry.artifacts.pullRequests.map(link => link.label))
     const branchPrs = branchLinks.filter((link): link is IterationRecapLink => link !== null && !knownLabels.has(link.label))
 
-    return { ...entry, artifacts: { ...entry.artifacts, repos, changedRepos, pullRequests: [...entry.artifacts.pullRequests, ...branchPrs] } }
+    return {
+      ...entry,
+      artifacts: { ...entry.artifacts, repos, changedRepos, pullRequests: [...entry.artifacts.pullRequests, ...branchPrs], commitLinks: commitLinks.flat() },
+    }
   } catch (error) {
     void logError($, `repo lookup failed for iteration ${entry.index}: ${error instanceof Error ? error.message : String(error)}`)
 
