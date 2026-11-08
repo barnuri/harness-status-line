@@ -65,6 +65,7 @@ function handlersFor($: EngineInterface): IterationRecapHandlers {
     onTogglePrompt: () => void update($, isPromptOpen, isOpen => !isOpen),
     onToggleHistory: () => void update($, isHistoryOpen, isOpen => !isOpen),
     onToggleQa: () => void update($, isQaOpen, isOpen => !isOpen).then(() => loadAnswers($)),
+    onOpenFile: path => void openFile($, path),
   }
 }
 
@@ -159,9 +160,19 @@ function sessionAnswersPath(list: readonly IterationRecapEntry[]): string | null
   return paths.at(-1) ?? null
 }
 
+/** Opens a file with the OS default app (`open` on macOS, `xdg-open` elsewhere). */
+async function openFile($: EngineInterface, path: string): Promise<void> {
+  try {
+    const opener = (await $.env.get('OSTYPE'))?.startsWith('darwin') === false ? 'xdg-open' : 'open'
+    await $.process.run([opener, path], { timeoutMs: GIT_TIMEOUT_MS })
+  } catch (error) {
+    $.ui.log(`${PLUGIN}: open failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 async function loadAnswers($: EngineInterface): Promise<void> {
   const list = await read($, iterations)
-  const path = sessionAnswersPath(list) ?? (await publishedSlugAnswersPath($, list))
+  const path = (await publishedSlugAnswersPath($, list)) ?? sessionAnswersPath(list)
   if (path === null) {
     return
   }
@@ -185,6 +196,9 @@ async function publishedSlugAnswersPath($: EngineInterface, list: readonly Itera
       return null
     }
     const slug = String(await $.fs.read(slugFile)).trim()
+    if (slug === '') {
+      return null
+    }
     const editedDirectories = list.flatMap(entry => entry.artifacts.files).map(file => file.slice(0, file.lastIndexOf('/')))
     const roots = await repoRoots($, [SESSION_DIRECTORY, ...new Set(editedDirectories)])
     for (const root of roots) {

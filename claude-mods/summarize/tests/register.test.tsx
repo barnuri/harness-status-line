@@ -38,12 +38,18 @@ function engineStubs(
   onModel: () => void = () => undefined,
   ghPrView: string | null = null,
   askResult = 'ok',
+  opened: string[][] = [],
+  home: string | undefined = undefined,
 ): void {
+  on('env.get', async ($, e) => ({ value: e.name === 'HOME' ? home : undefined }))
   on('turn.start', async ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', async ($, e) => ({ text: e.answer }))
   on('command.register', async ($, e) => ({ value: { command: e.name } }))
   on('session.cwd', async () => ({ value: '/work/web' }))
   on('process.run', async ($, e) => {
+    if (e.argv[0] === 'open') {
+      opened.push([...e.argv])
+    }
     if (e.argv[0] === 'gh') {
       return { value: { exitCode: ghPrView === null ? 1 : 0, stdout: ghPrView ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     }
@@ -105,12 +111,9 @@ test('records an iteration with its artifacts and a deterministic summary', asyn
     expect((await ui.find({ type: 'Text', text: '1 file' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'Want me to merge it?' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'This session' }))).toBeDefined()
-    const hrefs = (await ui.findAll({ type: 'Link' })).map(link => link.props.href)
-    expect(hrefs).toContain('https://github.com/acme/web/pull/42')
-    expect(hrefs).toContain('https://github.com/acme/web')
-    if (surface === 'terminal') {
-      expect(hrefs).toContain('file:///work/web')
-    }
+    const labels = (await ui.findAll({ type: 'Button' })).map(button => button.props.label)
+    expect(labels).toContain('+ acme/web#42')
+    expect(labels).toContain('web')
     expect((await ui.find({ type: 'Text', text: '/cr' }))).toBeDefined()
     await ui.unmount()
   }
@@ -312,10 +315,11 @@ test('shows each ask answer first, with its question below', async ($, on) => {
   await ui.unmount()
 })
 
-test('finds an answers.md written through Bash and links its html', async ($, on) => {
+test('finds an answers.md written through Bash and opens its html', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
+  const opened: string[][] = []
   const file = '/work/web/agent-spec/2026-11-08-db/answers.md'
-  engineStubs(on)
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', opened)
   on('fs.read', async ($, e) => ({ value: e.path === file ? '### Q1 — Which DB?\n\n**Answer:** Postgres.\n' : '' }))
 
   await $.turn.start({ text: 'record', turnId: 't1' })
@@ -325,8 +329,8 @@ test('finds an answers.md written through Bash and links its html', async ($, on
 
   const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: 'Postgres.' })).toBeDefined()
-  const hrefs = (await ui.findAll({ type: 'Link' })).map(link => link.props.href)
-  expect(hrefs).toContain('file:///work/web/agent-spec/2026-11-08-db/answers.html')
+  await ui.press({ key: 'open-answers' })
+  expect(opened).toContainEqual(['open', '/work/web/agent-spec/2026-11-08-db/answers.html'])
   await ui.unmount()
 })
 
@@ -362,8 +366,7 @@ test('shows file paths only with the showFilePaths option', { options: { showFil
 
 test('finds the answers.md of the slug session-slug published for this session', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
-  engineStubs(on)
-  on('env.get', async ($, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }))
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', [], '/home/me')
   on('session.id', async () => ({ value: 'sess-1' }))
   on('fs.exists', async ($, e) => ({ value: ['/home/me/.claude/session-slugs/sess-1', '/work/web/agent-spec/2026-11-08-x/answers.md'].includes(e.path) }))
   on('fs.read', async ($, e) => ({

@@ -72,6 +72,7 @@ export type IterationRecapHandlers = {
   onTogglePrompt: () => void;
   onToggleHistory: () => void;
   onToggleQa: () => void;
+  onOpenFile: (path: string) => void;
 };
 
 export type IterationRecapPaneLayout = {

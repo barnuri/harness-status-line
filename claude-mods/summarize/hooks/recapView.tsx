@@ -52,8 +52,8 @@ export class RecapView {
     return (
       <Box flexDirection="column" minHeight={layout.bodyRows}>
         <Box flexDirection="column" flexGrow={1}>
-          {RecapView.session(elements, iterations)}
-          {RecapView.answers(elements, answers, iterations, layout.isQaOpen)}
+          {RecapView.session(elements, iterations, handlers)}
+          {RecapView.answers(elements, answers, iterations, layout.isQaOpen, handlers)}
           {RecapView.header(elements, selected, iterations.length)}
           <Text bold color={RecapView.COLORS.summary} wrap="wrap">{selected.summary}</Text>
           <Text> </Text>
@@ -124,14 +124,14 @@ export class RecapView {
     return lines.filter(line => line !== '').join('\n')
   }
 
-  private static session(elements: RecapViewElements, iterations: readonly IterationRecapEntry[]): RenderElement {
+  private static session(elements: RecapViewElements, iterations: readonly IterationRecapEntry[], handlers: IterationRecapHandlers): RenderElement {
     const { Box, Text } = elements
 
     return (
       <Box flexDirection="column">
         <Text bold color={RecapView.COLORS.session}>◆ This session</Text>
-        {RecapView.alwaysLinkRow(elements, 'repos', SessionTotals.changedRepos(iterations), RecapView.COLORS.changed)}
-        {RecapView.alwaysLinkRow(elements, 'PRs', SessionTotals.pullRequests(iterations), RecapView.COLORS.links)}
+        {RecapView.alwaysLinkRow(elements, 'repos', SessionTotals.changedRepos(iterations), RecapView.COLORS.changed, handlers)}
+        {RecapView.alwaysLinkRow(elements, 'PRs', SessionTotals.pullRequests(iterations), RecapView.COLORS.links, handlers)}
         {RecapView.alwaysRow(elements, 'skills', SessionTotals.skills(iterations), RecapView.COLORS.skills)}
         <Text> </Text>
       </Box>
@@ -143,8 +143,9 @@ export class RecapView {
     answers: SessionAnswers | null,
     iterations: readonly IterationRecapEntry[],
     isQaOpen: boolean,
+    handlers: IterationRecapHandlers,
   ): RenderElement | null {
-    const { Box, Text, Link } = elements
+    const { Box, Text, Button } = elements
     const all = RecapView.sessionAnswers(answers, iterations)
     const items = isQaOpen ? all : all.slice(-RecapView.COLLAPSED_ANSWERS)
     if (items.length === 0) {
@@ -157,7 +158,7 @@ export class RecapView {
       <Box flexDirection="column">
         <Text bold color={RecapView.COLORS.session}>◆ Answers ({all.length})  <Text dimColor>{answers?.session || answers?.slug || 'this session'}</Text></Text>
         {hidden > 0 && <Text dimColor>  {hidden} earlier, press q for all</Text>}
-        {html !== undefined && <Box flexDirection="row"><Text dimColor>{'open'.padEnd(5)}</Text><Link href={`file://${html}`} label={html} /></Box>}
+        {html !== undefined && <Box flexDirection="row"><Button key="open-answers" plain label="open answers.html" hotkey="o" onPress={() => handlers.onOpenFile(html)} /></Box>}
         {items.map((item, index) => (
           <Box key={`answer-${index}`} flexDirection="column">
             <Text wrap="wrap"><Text bold color={RecapView.COLORS.accent}>{item.number.padEnd(5)}</Text><Text bold color={RecapView.COLORS.asked}>{item.answer}</Text></Text>
@@ -303,14 +304,28 @@ export class RecapView {
     return values.length === 0 ? null : RecapView.alwaysRow(elements, label, values, color)
   }
 
-  private static alwaysLinkRow(elements: RecapViewElements, label: string, links: readonly IterationRecapLink[], color: string): RenderElement {
-    const { Box, Text, Link } = elements
+  /** One button per link: pressing it opens the URL in the browser, or the folder for a local repo. */
+  private static alwaysLinkRow(
+    elements: RecapViewElements,
+    label: string,
+    links: readonly IterationRecapLink[],
+    color: string,
+    handlers: IterationRecapHandlers,
+  ): RenderElement {
+    const { Box, Text, Button } = elements
 
     return (
       <Box flexDirection="row" flexWrap="wrap">
         <Text bold color={color}>{label.padEnd(RecapView.LABEL_WIDTH)}</Text>
         {links.length === 0 && <Text dimColor>{RecapView.NONE}</Text>}
-        {links.map(link => (link.url === undefined ? <Text>{link.label} </Text> : <Link href={link.url} label={`${link.isCreated === true ? '+ ' : ''}${link.label} `} />))}
+        {links.map(link => {
+          const url = link.url
+          const text = `${link.isCreated === true ? '+ ' : ''}${link.label}`
+
+          return url === undefined
+            ? <Text key={`${label}-${link.label}`}>{text} </Text>
+            : <Button key={`${label}-${link.label}`} plain label={text} onPress={() => handlers.onOpenFile(RecapView.openTarget(url))} />
+        })}
       </Box>
     )
   }
@@ -342,6 +357,11 @@ export class RecapView {
     }
 
     return showPaths ? files.map(file => RecapView.relative(file, cwd)) : [`${files.length} file${files.length === 1 ? '' : 's'}`]
+  }
+
+  /** A `file://` URL as a plain path for `open`; any other URL unchanged. */
+  private static openTarget(url: string): string {
+    return url.startsWith('file://') ? url.slice('file://'.length) : url
   }
 
   private static relative(path: string, cwd: string): string {
