@@ -34,7 +34,7 @@ const isActive = atom({ plugin: 'summarize', key: 'isActive' } as const, true)
 const answers = atom({ plugin: 'summarize', key: 'answers' } as const, null as SessionAnswers | null)
 const isPromptOpen = atom({ plugin: 'summarize', key: 'isPromptOpen' } as const, false)
 const isHistoryOpen = atom({ plugin: 'summarize', key: 'isHistoryOpen' } as const, false)
-const isQaOpen = atom({ plugin: 'summarize', key: 'isQaOpen' } as const, false)
+const isQaOpen = atom({ plugin: 'summarize', key: 'isQaOpen' } as const, true)
 
 async function openPane($: EngineInterface): Promise<void> {
   await $.ui.open({ id: PANE, title: 'Summarize', rows: PANE_ROWS })

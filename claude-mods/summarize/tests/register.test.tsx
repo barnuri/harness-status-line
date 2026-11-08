@@ -330,7 +330,7 @@ test('finds an answers.md written through Bash and links its html', async ($, on
   await ui.unmount()
 })
 
-test('q shows every answer of the session, collapsed to the latest 3', async ($, on) => {
+test('Q&A starts open with every answer; q collapses to the latest 3', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   const file = '/work/web/agent-spec/2026-11-08-many/answers.md'
   engineStubs(on)
@@ -343,10 +343,10 @@ test('q shows every answer of the session, collapsed to the latest 3', async ($,
   await clock.advance(10)
 
   const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: 'Answer 1.' })).toBeDefined()
+  await ui.press({ key: 'toggle-qa' })
   expect(await ui.find({ type: 'Text', text: 'Answer 1.' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: 'Answer 5.' })).toBeDefined()
-  await ui.press({ key: 'toggle-qa' })
-  expect(await ui.find({ type: 'Text', text: 'Answer 1.' })).toBeDefined()
   await ui.unmount()
 })
 
