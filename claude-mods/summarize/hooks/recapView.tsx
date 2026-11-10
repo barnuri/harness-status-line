@@ -117,7 +117,7 @@ export class RecapView {
       ...SessionTotals.lastCommits(iterations, sessionHead).map((commit, index) =>
         `${(index === 0 ? 'last' : '').padEnd(RecapView.LABEL_WIDTH)}${commit.repo === undefined ? '' : `${commit.repo} `}${commit.url ?? commit.label}`),
       RecapView.alwaysTextRow('skills', SessionTotals.skills(iterations)),
-      ...RecapView.answerLines(answers, iterations),
+      ...RecapView.answerLines(answers),
       `Iteration ${selected.index}/${iterations.length} · ${RecapView.clock(selected.startedAt)} · ${RecapView.duration(selected.durationMs)}`,
       selected.summary,
       RecapView.alwaysTextRow('tools', RecapView.toolList(selected)),
@@ -161,19 +161,19 @@ export class RecapView {
     handlers: IterationRecapHandlers,
   ): RenderElement | null {
     const { Box, Text, Button } = elements
-    const all = RecapView.sessionAnswers(answers, iterations)
+    const all = RecapView.sessionAnswers(answers)
     const items = isQaOpen ? all : all.slice(-RecapView.COLLAPSED_ANSWERS)
     if (items.length === 0) {
       return null
     }
     const hidden = all.length - items.length
-    const html = answers === null ? undefined : answers.path.replace(/\.md$/, '.html')
+    const html = answers === null ? undefined : answers.path.replace(/overview\.md$/, 'session-overview.html')
 
     return (
       <Box flexDirection="column">
         <Text bold color={RecapView.COLORS.session}>◆ Answers ({all.length})  <Text dimColor>{answers?.session || answers?.slug || 'this session'}</Text></Text>
         {hidden > 0 && <Text dimColor>  {hidden} earlier, press q for all</Text>}
-        {html !== undefined && <Box flexDirection="row">{RecapView.action(elements, 'open-answers', 'open answers.html', () => handlers.onOpenFile(html), { hotkey: 'o' })}</Box>}
+        {html !== undefined && <Box flexDirection="row">{RecapView.action(elements, 'open-overview', 'open overview', () => handlers.onOpenFile(html), { hotkey: 'o' })}</Box>}
         {items.map((item, index) => (
           <Box key={`answer-${index}`} flexDirection="column">
             <Text wrap="wrap"><Text bold color={RecapView.COLORS.accent}>{item.number.padEnd(5)}</Text><Text bold color={RecapView.COLORS.asked}>{item.answer}</Text></Text>
@@ -185,20 +185,13 @@ export class RecapView {
     )
   }
 
-  /** answers.md items first, then every answered ask of the session not already in the file. */
-  private static sessionAnswers(answers: SessionAnswers | null, iterations: readonly IterationRecapEntry[]): SessionAnswer[] {
-    const fromFile = (answers?.items ?? []).filter(item => item.answer !== '')
-    const known = new Set(fromFile.map(item => item.question))
-    const asked = iterations
-      .flatMap(entry => entry.artifacts.questions)
-      .filter(question => question.answer !== undefined && !known.has(question.fullText ?? question.text))
-      .map((question, index) => ({ number: `A${index + 1}`, question: question.fullText ?? question.text, answer: question.answer ?? '' }))
-
-    return [...fromFile, ...asked]
+  /** Answers the session gave to user prompts with a `?`, from overview.md. */
+  private static sessionAnswers(answers: SessionAnswers | null): SessionAnswer[] {
+    return (answers?.items ?? []).filter(item => item.answer !== '')
   }
 
-  private static answerLines(answers: SessionAnswers | null, iterations: readonly IterationRecapEntry[]): string[] {
-    const items = RecapView.sessionAnswers(answers, iterations)
+  private static answerLines(answers: SessionAnswers | null): string[] {
+    const items = RecapView.sessionAnswers(answers)
     if (items.length === 0) {
       return []
     }

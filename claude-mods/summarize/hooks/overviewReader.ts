@@ -1,17 +1,17 @@
 import type { SessionAnswer, SessionAnswers } from '../types'
 
-export class AnswersReader {
-  public static readonly FILE_NAME = 'answers.md'
+export class OverviewReader {
+  public static readonly FILE_NAME = 'overview.md'
 
   private static readonly SESSION_LINE = /^>\s*Session:\s*(.+)$/
   private static readonly QUESTION_HEADING = /^###\s+(Q\d+)\s+[—–:-]\s+(.+?)\s*$/
   private static readonly SECTION_BREAK = /^(?:#{1,3}\s|\s*(?:-{3,}|\*{3,})\s*$)/
   private static readonly ANSWER_LABEL = /^\*\*Answer:\*\*\s*/
   private static readonly BOLD = /\*\*/g
-  private static readonly ANSWERS_PATH = /\/agent-spec\/([^/]+)\/answers\.md$/
+  private static readonly OVERVIEW_PATH = /\/agent-spec\/([^/]+)\/overview\.md$/
 
   public static slugOf(path: string): string | null {
-    return AnswersReader.ANSWERS_PATH.exec(path)?.[1] ?? null
+    return OverviewReader.OVERVIEW_PATH.exec(path)?.[1] ?? null
   }
 
   public static parse(markdown: string, path: string): SessionAnswers {
@@ -22,24 +22,24 @@ export class AnswersReader {
 
     const close = (): void => {
       if (current !== null) {
-        items.push({ number: current.number, question: current.question, answer: AnswersReader.answerText(current.body) })
+        items.push({ number: current.number, question: current.question, answer: OverviewReader.answerText(current.body) })
         current = null
       }
     }
 
     for (const line of lines) {
-      const sessionMatch = AnswersReader.SESSION_LINE.exec(line)
+      const sessionMatch = OverviewReader.SESSION_LINE.exec(line)
       if (sessionMatch !== null && session === '') {
         session = sessionMatch[1]?.trim() ?? ''
         continue
       }
-      const question = AnswersReader.QUESTION_HEADING.exec(line)
+      const question = OverviewReader.QUESTION_HEADING.exec(line)
       if (question !== null) {
         close()
-        current = { number: question[1] ?? '', question: (question[2] ?? '').replace(AnswersReader.BOLD, ''), body: [] }
+        current = { number: question[1] ?? '', question: (question[2] ?? '').replace(OverviewReader.BOLD, ''), body: [] }
         continue
       }
-      if (AnswersReader.SECTION_BREAK.test(line)) {
+      if (OverviewReader.SECTION_BREAK.test(line)) {
         close()
         continue
       }
@@ -47,12 +47,12 @@ export class AnswersReader {
     }
     close()
 
-    return { path, slug: AnswersReader.slugOf(path) ?? '', session, items }
+    return { path, slug: OverviewReader.slugOf(path) ?? '', session, items }
   }
 
   private static answerText(body: readonly string[]): string {
     const text = body.map(line => line.trim()).filter(line => line !== '').join(' ')
 
-    return text.replace(AnswersReader.ANSWER_LABEL, '').replace(AnswersReader.BOLD, '').trim()
+    return text.replace(OverviewReader.ANSWER_LABEL, '').replace(OverviewReader.BOLD, '').trim()
   }
 }

@@ -11,8 +11,17 @@ Deterministic iteration recap pane for Claude Code. It makes no model calls, eve
   opener). Show a short label only, never the raw URL or path: a repo shows its name, a PR shows
   `#<number>`.
 - **Empty means hidden.** A section with nothing to show renders nothing, with no placeholder text.
-- **Answers before questions.** The Q&A section shows each answer first and its question dimmed
-  below. It is open by default; `q` collapses it.
+- **Answers before questions.** The Q&A section shows only `overview.md`: each answer the session
+  gave to a user prompt with a `?`, with that question dimmed below. AskUserQuestion replies are
+  not Answers. It is open by default; `q` collapses it.
+- **Session overview.** On every completed turn the mod writes `overview-facts.json` into the
+  session's `agent-spec/<slug>/` folder (`OverviewFacts`, no model call). `/summarize overview`
+  writes it, runs `~/.agents/skills/session-overview/scripts/render_overview.py <folder>`, and opens
+  `session-overview.html`. The page reads the facts plus `tasks.md`, `plan.md` and `overview.md`.
+  The `overview` action in the Answers section opens the same page.
+- **Skills can be missed.** The host may skip this mod's `skill.prompt` hook when another plugin
+  ahead of it does not pass the event on. `Skill` tool calls and typed slash commands still count,
+  so a skill loaded only through that hook can be absent from the Skills list.
 - **Session work rows.** `PRs` lists the open PR of the current branch for every repo the session
   touched, plus PRs it created. `commits` lists commits made on a default branch (`main`,
   `master`, `develop`) during each turn, as `sha6 message` (message cut to 40 characters), each

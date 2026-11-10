@@ -44,10 +44,16 @@ function engineStubs(
   opened: string[][] = [],
   home: string | undefined = undefined,
   exists: (path: string) => boolean = path => path.includes('/agent-spec/'),
+  written: { path: string; text: string }[] = [],
+  rendered: string[][] = [],
 ): void {
   on('env.get', async ($, e) => ({ value: e.name === 'HOME' ? home : undefined }))
   on('fs.exists', async ($, e) => ({ value: exists(e.path) }))
-  on('fs.write', async () => ({ value: undefined }))
+  on('fs.write', async ($, e) => {
+    written.push({ path: e.path, text: e.text })
+
+    return { value: undefined }
+  })
   on('turn.start', async ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', async ($, e) => ({ text: e.answer }))
   on('command.register', async ($, e) => ({ value: { command: e.name } }))
@@ -55,6 +61,11 @@ function engineStubs(
   on('process.run', async ($, e) => {
     if (e.argv[0] === 'open') {
       opened.push([...e.argv])
+    }
+    if (e.argv[0] === 'python3') {
+      rendered.push([...e.argv])
+
+      return { value: { exitCode: 0, stdout: `${e.argv[3]}/session-overview.html\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     }
     if (e.argv[0] === 'gh') {
       return { value: { exitCode: ghPrView === null ? 1 : 0, stdout: ghPrView ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
@@ -195,10 +206,10 @@ test('is active by default and opens after every new iteration', { options: { sh
   expect(opened).toEqual(['summarize', 'summarize'])
 })
 
-test('shows the answers.md this session wrote, with no model call', async ($, on) => {
+test('shows the overview.md this session wrote, with no model call', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   let modelCalls = 0
-  const file = '/work/web/agent-spec/2026-11-08-login/answers.md'
+  const file = '/work/web/agent-spec/2026-11-08-login/overview.md'
   engineStubs(on, () => undefined, () => 'clean', () => { modelCalls += 1 })
   on('fs.read', async ($, e) => ({
     value: e.path === file
@@ -302,7 +313,7 @@ test('detects the open PR of the session repo branch with gh, like the footer', 
   expect(answer.text).toMatch(/PRs\s+https:\/\/github\.com\/chkp-genai\/keystone\/pull\/418/)
 })
 
-test('shows each ask answer first, with its question below', async ($, on) => {
+test('keeps AskUserQuestion replies out of the Answers section', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on, () => undefined, () => 'clean', () => undefined, null,
     'User has answered your questions: "Which DB?"="Postgres, with a CHECK", "Ship today?"="No". You can now continue.')
@@ -313,35 +324,80 @@ test('shows each ask answer first, with its question below', async ($, on) => {
   await clock.advance(10)
 
   const answer = await $.command.run(SUMMARIZE)
-  expect(answer.text).toContain('A1 Postgres, with a CHECK\n    ↳ Which DB?')
-  expect(answer.text).toContain('A2 No\n    ↳ Ship today?')
+  expect(answer.text).not.toContain('Answers (')
+  expect(answer.text).not.toContain('A1 Postgres, with a CHECK')
   const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
-  expect(await ui.find({ type: 'Text', text: 'Postgres, with a CHECK' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '◆ Answers' })).toBeUndefined()
   await ui.unmount()
 })
 
-test('finds an answers.md written through Bash and opens its html', async ($, on) => {
+test('finds an overview.md written through Bash and opens session-overview.html', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   const opened: string[][] = []
-  const file = '/work/web/agent-spec/2026-11-08-db/answers.md'
+  const file = '/work/web/agent-spec/2026-11-08-db/overview.md'
   engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', opened)
   on('fs.read', async ($, e) => ({ value: e.path === file ? '### Q1 — Which DB?\n\n**Answer:** Postgres.\n' : '' }))
 
   await $.turn.start({ text: 'record', turnId: 't1' })
-  await $.tool.call({ tool: 'Bash', command: "python3 render_answers.py '/work/web/agent-spec/2026-11-08-db/answers.md'" })
+  await $.tool.call({ tool: 'Bash', command: "python3 write_overview.py '/work/web/agent-spec/2026-11-08-db/overview.md'" })
   await $.turn.complete({ answer: 'Recorded.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.advance(10)
 
   const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: 'Postgres.' })).toBeDefined()
-  await ui.press({ key: 'open-answers' })
-  expect(opened).toContainEqual(['open', '/work/web/agent-spec/2026-11-08-db/answers.html'])
+  expect(await ui.find({ type: 'Text', text: 'open overview' })).toBeDefined()
+  await ui.press({ key: 'open-overview' })
+  expect(opened).toContainEqual(['open', '/work/web/agent-spec/2026-11-08-db/session-overview.html'])
   await ui.unmount()
 })
 
+test('turn.complete writes overview-facts.json into the published slug folder', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const written: { path: string; text: string }[] = []
+  const present = ['/home/me/.claude/session-slugs/sess-1', '/work/web/agent-spec/2026-11-08-x']
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', [], '/home/me', path => present.includes(path), written)
+  on('session.id', async () => ({ value: 'sess-1' }))
+  on('fs.read', async () => ({ value: '2026-11-08-x\n' }))
+
+  await runIteration($, 't1', 'fix the login redirect', 'Fixed it.')
+  await clock.advance(10)
+
+  const facts = written.find(file => file.path === '/work/web/agent-spec/2026-11-08-x/overview-facts.json')
+  expect(facts).toBeDefined()
+  const document = JSON.parse(facts?.text ?? '{}')
+  expect(document.schemaVersion).toBe(1)
+  expect(document.slug).toBe('2026-11-08-x')
+  expect(document.turns).toBe(1)
+  expect(document.files).toEqual(['/work/web/src/login.ts'])
+})
+
+test('/summarize overview writes the facts, runs the renderer with python3 -I, and opens the html', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const written: { path: string; text: string }[] = []
+  const rendered: string[][] = []
+  const opened: string[][] = []
+  const folder = '/work/web/agent-spec/2026-11-08-x'
+  const script = '/home/me/.agents/skills/session-overview/scripts/render_overview.py'
+  const present = ['/home/me/.claude/session-slugs/sess-1', folder, script]
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', opened, '/home/me', path => present.includes(path), written, rendered)
+  on('session.id', async () => ({ value: 'sess-1' }))
+  on('fs.read', async () => ({ value: '2026-11-08-x\n' }))
+
+  await runIteration($, 't1', 'fix the login redirect', 'Fixed it.')
+  await clock.advance(10)
+  written.length = 0
+
+  const answer = await $.command.run({ ...SUMMARIZE, args: 'overview' })
+  expect(answer.text).toBe(`Overview: ${folder}/session-overview.html`)
+  expect(written.map(file => file.path)).toEqual([`${folder}/overview-facts.json`])
+  expect(rendered).toEqual([['python3', '-I', script, folder]])
+  expect(opened).toContainEqual(['open', `${folder}/session-overview.html`])
+})
+
+
 test('Q&A starts open with every answer; q collapses to the latest 3', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
-  const file = '/work/web/agent-spec/2026-11-08-many/answers.md'
+  const file = '/work/web/agent-spec/2026-11-08-many/overview.md'
   engineStubs(on)
   const cards = [1, 2, 3, 4, 5].map(n => `### Q${n} — Question ${n}?\n\n**Answer:** Answer ${n}.\n\n---\n`).join('\n')
   on('fs.read', async ($, e) => ({ value: e.path === file ? cards : '' }))
@@ -369,9 +425,9 @@ test('shows file paths only with the showFilePaths option', { options: { showFil
   await ui.unmount()
 })
 
-test('finds the answers.md of the slug session-slug published for this session', async ($, on) => {
+test('finds the overview.md of the slug session-slug published for this session', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
-  const present = ['/home/me/.claude/session-slugs/sess-1', '/work/web/agent-spec/2026-11-08-x/answers.md']
+  const present = ['/home/me/.claude/session-slugs/sess-1', '/work/web/agent-spec/2026-11-08-x', '/work/web/agent-spec/2026-11-08-x/overview.md']
   engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', [], '/home/me', path => present.includes(path))
   on('session.id', async () => ({ value: 'sess-1' }))
   on('fs.read', async ($, e) => ({

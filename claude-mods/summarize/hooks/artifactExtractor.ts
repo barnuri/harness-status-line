@@ -43,12 +43,12 @@ export class ArtifactExtractor {
   private static readonly MIN_QUESTION_LENGTH = 12
   private static readonly MAX_ANSWER_QUESTIONS = 5
   private static readonly MAX_LABEL_LENGTH = 80
-  private static readonly ANSWER_FILE = /(\/[^\s"'`$]*\/agent-spec\/[^/\s"'`$]+\/answers)\.(?:md|html)\b/g
+  private static readonly OVERVIEW_FILE = /(\/[^\s"'`$]*\/agent-spec\/[^/\s"'`$]+)\/(?:overview\.md|session-overview\.html)\b/g
 
   public static extract(calls: readonly IterationRecapToolCall[], answer: string, prompt: string): IterationRecapArtifacts {
     return {
       files: ArtifactExtractor.files(calls),
-      answerFiles: ArtifactExtractor.answerFiles(calls),
+      overviewFiles: ArtifactExtractor.overviewFiles(calls),
       skills: ArtifactExtractor.skills(calls, prompt),
       repos: ArtifactExtractor.remoteRepos(calls, answer),
       changedRepos: [],
@@ -213,12 +213,12 @@ export class ArtifactExtractor {
     return [shortSha, subject].filter(part => part !== undefined && part !== '').join(' ')
   }
 
-  /** Absolute `agent-spec/<slug>/answers.md` paths a tool wrote or rendered, from inputs and results. */
-  private static answerFiles(calls: readonly IterationRecapToolCall[]): string[] {
+  /** Absolute `agent-spec/<slug>/overview.md` paths a tool wrote or rendered (`session-overview.html` maps to its overview.md), from inputs and results. */
+  private static overviewFiles(calls: readonly IterationRecapToolCall[]): string[] {
     const found = calls.flatMap(call => {
       const text = `${JSON.stringify(call.input)}\n${call.resultText}`
 
-      return [...text.matchAll(ArtifactExtractor.ANSWER_FILE)].map(match => `${match[1]}.md`)
+      return [...text.matchAll(ArtifactExtractor.OVERVIEW_FILE)].map(match => `${match[1]}/overview.md`)
     })
 
     return [...new Set(found)]

@@ -1,9 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { AnswersReader } from './answersReader'
 import { ArtifactExtractor } from './artifactExtractor'
 import { IterationRecorder } from './iterationRecorder'
+import { OverviewFacts } from './overviewFacts'
+import { OverviewReader } from './overviewReader'
 import { RecapCursor } from './recapCursor'
 import { GitFacts } from './gitFacts'
 import { RecapView } from './recapView'
@@ -26,6 +27,9 @@ const GH_TIMEOUT_MS = 5000
 const MS_PER_SECOND = 1000
 const COMMIT_CLOCK_SLACK_SECONDS = 5
 const MAX_TURN_COMMITS = 20
+const OVERVIEW_FACTS_FILE = 'overview-facts.json'
+const SESSION_OVERVIEW_SCRIPT = '.agents/skills/session-overview/scripts/render_overview.py'
+const RENDER_TIMEOUT_MS = 10000
 const DEFAULT_BRANCHES = new Set(['main', 'master', 'develop', 'HEAD'])
 const branchPullRequests = new Map<string, IterationRecapLink>()
 const GIT_STATE_COMMANDS = [['rev-parse', 'HEAD'], ['status', '--porcelain'], ['diff', 'HEAD', '--numstat']] as const
@@ -213,11 +217,11 @@ function repoName(root: string): string {
   return root.split('/').at(-1) ?? root
 }
 
-/** The newest `answers.md` the session wrote or rendered that exists on disk. */
+/** The newest `overview.md` the session wrote or rendered that exists on disk. */
 async function sessionAnswersPath($: EngineInterface, list: readonly IterationRecapEntry[]): Promise<string | null> {
   const paths = list
-    .flatMap(entry => [...entry.artifacts.files, ...(entry.artifacts.answerFiles ?? [])])
-    .filter(path => AnswersReader.slugOf(path) !== null)
+    .flatMap(entry => [...entry.artifacts.files, ...(entry.artifacts.overviewFiles ?? [])])
+    .filter(path => OverviewReader.slugOf(path) !== null)
   for (const path of [...new Set(paths)].reverse()) {
     if (await $.fs.exists(path).catch(() => false)) {
       return path
@@ -259,20 +263,34 @@ async function openFile($: EngineInterface, path: string): Promise<void> {
 
 async function loadAnswers($: EngineInterface): Promise<void> {
   const list = await read($, iterations)
-  const path = (await publishedSlugAnswersPath($, list)) ?? (await sessionAnswersPath($, list))
+  const path = (await publishedOverviewPath($, list)) ?? (await sessionAnswersPath($, list))
   if (path === null) {
     return
   }
   try {
     const text = await $.fs.read(path)
-    await update($, answers, () => AnswersReader.parse(String(text), path))
+    await update($, answers, () => OverviewReader.parse(String(text), path))
   } catch (error) {
     void logError($, `answers read failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
-/** The `answers.md` of the slug the session-slug skill published for this session, in the session repo or a repo the session edited. */
-async function publishedSlugAnswersPath($: EngineInterface, list: readonly IterationRecapEntry[]): Promise<string | null> {
+/** The `overview.md` of the published slug folder, when that file exists. */
+async function publishedOverviewPath($: EngineInterface, list: readonly IterationRecapEntry[]): Promise<string | null> {
+  const folder = await publishedSlugFolder($, list)
+  if (folder === null) {
+    return null
+  }
+  const path = `${folder}/${OverviewReader.FILE_NAME}`
+
+  return (await $.fs.exists(path)) ? path : null
+}
+
+/**
+ * The folder `agent-spec/<slug>/` the session-slug skill published for this session, in the session
+ * repo or a repo the session edited. Null when the session published none.
+ */
+async function publishedSlugFolder($: EngineInterface, list: readonly IterationRecapEntry[]): Promise<string | null> {
   try {
     const home = await $.env.get('HOME')
     if (home === undefined) {
@@ -289,9 +307,9 @@ async function publishedSlugAnswersPath($: EngineInterface, list: readonly Itera
     const editedDirectories = list.flatMap(entry => entry.artifacts.files).map(file => file.slice(0, file.lastIndexOf('/')))
     const roots = await repoRoots($, [SESSION_DIRECTORY, ...new Set(editedDirectories)])
     for (const root of roots) {
-      const candidate = `${root}/agent-spec/${slug}/${AnswersReader.FILE_NAME}`
-      if (await $.fs.exists(candidate)) {
-        return candidate
+      const folder = `${root}/agent-spec/${slug}`
+      if (await $.fs.exists(folder)) {
+        return folder
       }
     }
 
@@ -300,6 +318,71 @@ async function publishedSlugAnswersPath($: EngineInterface, list: readonly Itera
     void logError($, `published slug lookup failed: ${error instanceof Error ? error.message : String(error)}`)
 
     return null
+  }
+}
+
+/**
+ * Writes `overview-facts.json` into `folder`, built from the iterations and the session HEAD. Returns
+ * false after logging the error when the write fails.
+ */
+async function writeOverviewFacts($: EngineInterface, folder: string, list: readonly IterationRecapEntry[]): Promise<boolean> {
+  try {
+    const document = OverviewFacts.build({
+      slug: folder.slice(folder.lastIndexOf('/') + 1),
+      sessionId: await $.session.id(),
+      cwd: await $.session.cwd(),
+      iterations: list,
+      sessionHead: await read($, sessionHead),
+    })
+    await $.fs.write(`${folder}/${OVERVIEW_FACTS_FILE}`, OverviewFacts.serialize(document))
+
+    return true
+  } catch (error) {
+    void logError($, `overview facts write failed for ${folder}: ${error instanceof Error ? error.message : String(error)}`)
+
+    return false
+  }
+}
+
+/** The session-overview renderer under `~/.agents/skills`, or null when the skill is not installed. */
+async function overviewScript($: EngineInterface): Promise<string | null> {
+  const home = await $.env.get('HOME')
+  if (home === undefined) {
+    return null
+  }
+  const script = `${home}/${SESSION_OVERVIEW_SCRIPT}`
+
+  return (await $.fs.exists(script)) ? script : null
+}
+
+/** `/summarize overview`: writes the facts, renders `session-overview.html` in the slug folder, and opens it. */
+async function renderOverview($: EngineInterface, list: readonly IterationRecapEntry[]): Promise<string> {
+  const folder = await publishedSlugFolder($, list)
+  if (folder === null) {
+    return 'No published slug folder for this session.'
+  }
+  if (!(await writeOverviewFacts($, folder, list))) {
+    return 'Overview not written.'
+  }
+  const script = await overviewScript($)
+  if (script === null) {
+    return 'session-overview skill not installed.'
+  }
+  try {
+    const { exitCode, stdout, stderr } = await $.process.run(['python3', '-I', script, folder], { timeoutMs: RENDER_TIMEOUT_MS })
+    const html = stdout.trim()
+    if (exitCode !== 0 || html === '') {
+      void logError($, `render_overview exited ${exitCode} for ${folder}: ${stderr.trim()}`)
+
+      return 'Overview not written.'
+    }
+    await openFile($, html)
+
+    return `Overview: ${html}`
+  } catch (error) {
+    void logError($, `render_overview failed for ${folder}: ${error instanceof Error ? error.message : String(error)}`)
+
+    return 'Overview not written.'
   }
 }
 
@@ -345,8 +428,8 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
-      description: 'Summarize the last iteration and keep summarizing new ones; browse earlier ones (prev, next, last, <n>, band)',
-      argumentHint: '[prev|next|last|<n>|band]',
+      description: 'Summarize the last iteration and keep summarizing new ones; browse earlier ones (prev, next, last, <n>, band); write the session overview (overview)',
+      argumentHint: '[prev|next|last|<n>|band|overview]',
     })
     await autoOpenPane($)
     void loadSessionHead($)
@@ -400,6 +483,11 @@ export const register: Register = (on, options) => {
     }
     const entry = await resolveRepos($, recorded, scope)
     await update($, iterations, current => [...current, entry].slice(-MAX_ITERATIONS))
+    const saved = await read($, iterations)
+    const folder = await publishedSlugFolder($, saved)
+    if (folder !== null) {
+      await writeOverviewFacts($, folder, saved)
+    }
     await loadAnswers($)
     await autoOpenPane($)
 
@@ -415,6 +503,9 @@ export const register: Register = (on, options) => {
       await update($, isBandHidden, () => !isHidden)
 
       return { text: isHidden ? 'Recap band shown.' : 'Recap band hidden.' }
+    }
+    if (word === 'overview') {
+      return { text: await renderOverview($, await read($, iterations)) }
     }
     const list = await read($, iterations)
     const current = await read($, cursor)

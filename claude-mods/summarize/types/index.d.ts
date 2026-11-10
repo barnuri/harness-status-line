@@ -26,7 +26,7 @@ export type IterationRecapTurnEnd = {
 
 export type IterationRecapArtifacts = {
   files: string[];
-  answerFiles?: string[];
+  overviewFiles?: string[];
   skills: string[];
   repos: string[];
   changedRepos: IterationRecapLink[];
@@ -88,6 +88,26 @@ export type IterationRecapPaneLayout = {
 export type SessionAnswer = { number: string; question: string; answer: string };
 
 export type SessionAnswers = { path: string; slug: string; session: string; items: SessionAnswer[] };
+
+/** The overview-facts.json document (schemaVersion 1). Answers are not part of it. */
+export type OverviewFactsDocument = {
+  schemaVersion: 1;
+  slug: string;
+  sessionId: string;
+  cwd: string;
+  turns: number;
+  durationMs: number;
+  outputTokens: number;
+  toolCounts: Record<string, number>;
+  files: string[];
+  skills: string[];
+  changedRepos: IterationRecapLink[];
+  pullRequests: IterationRecapLink[];
+  commits: IterationRecapLink[];
+  lastCommits: IterationRecapLink[];
+  plans: string[];
+  reviews: string[];
+};
 
 declare module 'claude-code' {
   interface PluginState {

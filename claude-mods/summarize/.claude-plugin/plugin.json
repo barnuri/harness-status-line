@@ -1,7 +1,7 @@
 {
   "name": "summarize",
   "version": "0.1.0",
-  "description": "Summarizes every Claude Code iteration deterministically (no model calls) and shows the session's answers.md Q&A: files, repos, PRs, reviews, plans, open questions",
+  "description": "Summarizes every Claude Code iteration deterministically (no model calls) and shows the session's overview.md Q&A and writes overview-facts.json for the session-overview page: files, repos, PRs, reviews, plans, open questions",
   "author": {
     "name": "barnuri"
   },
