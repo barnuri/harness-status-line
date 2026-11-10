@@ -1,4 +1,4 @@
-import type { CopilotQuotaState, LlmHubAuto, StatusJSON } from '../types.ts';
+import type { CopilotQuotaState, LlmHubAuto, LlmHubToday, StatusJSON } from '../types.ts';
 import { LlmHubClient } from './llmHubClient.ts';
 import { LlmHubStore } from './llmHubStore.ts';
 import { PayloadClassifier } from './payloadClassifier.ts';
@@ -79,6 +79,8 @@ export class LlmHubEnricher {
       // Rate limits in a hub session describe the Anthropic login, not the Copilot seat that serves it.
       result = quota ? { ...result, copilot_quota: quota, rate_limits: undefined } : result;
     }
+    const today = await this.resolveTodayCost(client, store, nowMs);
+    result = today ? { ...result, llm_hub_today: today } : result;
     return result;
   }
 
@@ -146,6 +148,24 @@ export class LlmHubEnricher {
     }
     store.writeUsage(profile, state, nowMs);
     return this.withoutExpiredQuotas(state, nowMs);
+  }
+
+  // Fresh hub answer when cached within a minute; otherwise the hub is asked, and an unreachable hub shows nothing rather than a stale total.
+  private async resolveTodayCost(client: LlmHubClient, store: LlmHubStore, nowMs: number): Promise<LlmHubToday | null> {
+    const cached = store.readTodayCost(nowMs);
+    if (cached) {
+      return cached;
+    }
+    if (store.isTodayBackingOff(nowMs)) {
+      return null;
+    }
+    const today = await client.fetchTodayCost();
+    if (today === null) {
+      store.recordTodayFailure(nowMs);
+      return null;
+    }
+    store.writeTodayCost(today, nowMs);
+    return today;
   }
 
   // A stored snapshot can outlive its quota period while the hub is unreachable.

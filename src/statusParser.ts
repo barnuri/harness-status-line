@@ -1,4 +1,4 @@
-import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance, CopilotQuotaState, CopilotQuotaEntry, LlmHubAuto, LlmHubPrice, LlmHubReviewer } from './types.ts';
+import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance, CopilotQuotaState, CopilotQuotaEntry, LlmHubAuto, LlmHubPrice, LlmHubReviewer, LlmHubToday } from './types.ts';
 import { formatTokenCount, formatTokenLimit, formatTokenPair } from './shared/tokenFormat.ts';
 import { resolveSessionSlug } from './shared/sessionSlug.ts';
 import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
@@ -188,6 +188,14 @@ export class StatusParser {
       const copilotQuota = this.buildCopilotQuotaSegment(status.copilot_quota, colors, workDays, showAic);
       if (copilotQuota) {
         segments.push(copilotQuota);
+      }
+      const copilotPerDay = this.buildCopilotPerWorkDaySegment(status.copilot_quota, colors, workDays);
+      if (copilotPerDay) {
+        segments.push(copilotPerDay);
+      }
+      const hubToday = this.buildHubTodaySegment(status.llm_hub_today, colors);
+      if (hubToday) {
+        segments.push(hubToday);
       }
       const credits = this.buildCreditsSegment(status, colors);
       if (credits) {
@@ -590,6 +598,60 @@ export class StatusParser {
       value: [this.formatCopilotQuotaAmount(entry, showAic), `${used}% used`, reset ? `reset ${reset}` : null]
         .filter((part): part is string => part !== null)
         .join(' · '),
+      fg: colorConfig.fg,
+      bg: colorConfig.bg,
+    };
+  }
+
+  // Spend on llm-hub since local midnight, every profile. Uses the healthy color: it is information, not a warning.
+  private buildHubTodaySegment(today: LlmHubToday | undefined, colors: SegmentColorMap): Segment | null {
+    if (!today) {
+      return null;
+    }
+    return {
+      icon: StatusParser.SESSION_COST_ICON,
+      label: 'today',
+      value: `$${today.costUsd.toFixed(StatusParser.DOLLAR_DECIMALS)} · ${today.requests} req`,
+      fg: colors.rateHealthy.fg,
+      bg: colors.rateHealthy.bg,
+    };
+  }
+
+  // What is left of the Copilot quota, and the average per work day until it resets, counting today.
+  // Dollars use the same 100 AIC = $1 rate as the quota segment. Omitted when the quota has no AIC amounts.
+  private buildCopilotPerWorkDaySegment(quota: CopilotQuotaState | undefined, colors: SegmentColorMap, workDays: readonly number[]): Segment | null {
+    const entry = quota?.quotas
+      .filter((item) => item.remainingPercentage >= 0 && item.remainingPercentage <= 100)
+      .sort((left, right) => left.remainingPercentage - right.remainingPercentage)[0];
+    if (!entry || entry.unit !== 'aic' || entry.used === undefined || entry.entitlement === undefined || !entry.resetDate) {
+      return null;
+    }
+    const resetMs = Date.parse(entry.resetDate);
+    if (Number.isNaN(resetMs)) {
+      return null;
+    }
+    const nowSecs = Date.now() / 1000;
+    const workDaysLeft = this.countWorkDays(resetMs / 1000, workDays, nowSecs);
+    if (workDaysLeft <= 0) {
+      return null;
+    }
+
+    const leftUsd = Math.max(0, entry.entitlement - entry.used) * StatusParser.USD_PER_AI_CREDIT;
+    const leftPercent = Math.max(0, Math.round(entry.remainingPercentage * 10) / 10);
+    const perDayUsd = leftUsd / workDaysLeft;
+    const perDayPercent = Math.round((leftPercent / workDaysLeft) * 10) / 10;
+    const colorConfig = leftPercent < 20
+      ? colors.rateCritical
+      : leftPercent < 50
+        ? colors.rateWarning
+        : colors.rateHealthy;
+    return {
+      icon: StatusParser.CREDITS_ICON,
+      label: 'left',
+      value: [
+        `$${leftUsd.toFixed(StatusParser.DOLLAR_DECIMALS)} (${leftPercent}%)`,
+        `per work day $${perDayUsd.toFixed(StatusParser.DOLLAR_DECIMALS)} (${perDayPercent}%)`,
+      ].join(' · '),
       fg: colorConfig.fg,
       bg: colorConfig.bg,
     };

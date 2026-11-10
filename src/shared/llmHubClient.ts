@@ -1,6 +1,7 @@
 import type {
   CopilotQuotaState,
   LlmHubAuto,
+  LlmHubToday,
   LlmHubDecisionLookup,
   LlmHubPrice,
   LlmHubReviewer,
@@ -17,6 +18,7 @@ export class LlmHubClient {
   private static readonly MODELS_PATH = '/v1/models';
   private static readonly ONE_M_SUFFIX = /\[1m\]$/i;
   private static readonly USAGE_PATH = '/api/copilot/usage';
+  private static readonly TODAY_STATS_PATH = '/api/stats?range=today';
   private static readonly STATES: ReadonlyArray<LlmHubState> = ['selected', 'started', 'completed', 'rejected', 'cancelled'];
 
   readonly baseUrl: string;
@@ -43,6 +45,40 @@ export class LlmHubClient {
     const query = new URLSearchParams({ profile });
     const raw = await this.get(`${LlmHubClient.USAGE_PATH}?${query.toString()}`);
     return raw === null ? null : this.quotaReader.parseState(raw);
+  }
+
+  // Spend and request count across every profile since local midnight, from the hub's stats (cost estimated by its pricing book).
+  async fetchTodayCost(): Promise<LlmHubToday | null> {
+    const raw = await this.get(LlmHubClient.TODAY_STATS_PATH);
+    if (raw === null) {
+      return null;
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!isRecord(parsed) || !Array.isArray(parsed['profiles'])) {
+        return null;
+      }
+      let costUsd = 0;
+      let requests = 0;
+      for (const row of parsed['profiles']) {
+        if (!isRecord(row)) {
+          return null;
+        }
+        const cost = row['cost_usd'];
+        const count = row['requests'];
+        if (typeof cost !== 'number' || typeof count !== 'number' || !Number.isFinite(cost) || !Number.isFinite(count)) {
+          return null;
+        }
+        costUsd += cost;
+        requests += count;
+      }
+      return { costUsd, requests };
+    } catch (err) {
+      if (err instanceof Error) {
+        return null;
+      }
+      throw err;
+    }
   }
 
   // The hub's current Smart Auto selection for one session: main model, active reviewers, state and age.

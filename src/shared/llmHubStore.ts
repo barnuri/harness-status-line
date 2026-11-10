@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import type { CopilotQuotaState, LlmHubAuto } from '../types.ts';
+import type { CopilotQuotaState, LlmHubAuto, LlmHubToday } from '../types.ts';
 import { CopilotQuotaReader } from './copilotQuotaReader.ts';
 import { isRecord } from './isRecord.ts';
 
@@ -24,7 +24,13 @@ interface StoredCopilotUse {
   readonly fetchedAt: number;
 }
 
+interface StoredTodayCost extends LlmHubToday {
+  readonly fetchedAt: number;
+}
+
 interface LlmHubStoreData {
+  readonly todayCost?: StoredTodayCost;
+  readonly todayFailedAt?: number;
   readonly usage: Readonly<Record<string, StoredUsage>>;
   readonly decisions: Readonly<Record<string, StoredDecision>>;
   readonly selections: Readonly<Record<string, StoredSelection>>;
@@ -59,6 +65,30 @@ export class LlmHubStore {
     }
     const state = this.quotaReader.parseState(JSON.stringify(stored['state']));
     return state ? { fetchedAt: stored['fetchedAt'], state } : null;
+  }
+
+  // Today's spend is refreshed at most once a minute; the cache is per hub base like the rest.
+  readTodayCost(nowMs: number): LlmHubToday | null {
+    const stored = this.read().todayCost;
+    if (!stored || nowMs - stored.fetchedAt > LlmHubStore.USAGE_FRESH_MS || stored.fetchedAt > nowMs) {
+      return null;
+    }
+    return { costUsd: stored.costUsd, requests: stored.requests };
+  }
+
+  // Its own backoff, so a failed stats call never delays the quota, decision or selection lookups.
+  isTodayBackingOff(nowMs: number): boolean {
+    const failedAt = this.read().todayFailedAt;
+    return failedAt !== undefined && nowMs - failedAt < LlmHubStore.FAILURE_BACKOFF_MS && failedAt <= nowMs;
+  }
+
+  recordTodayFailure(nowMs: number): void {
+    this.write({ ...this.read(), todayFailedAt: nowMs });
+  }
+
+  writeTodayCost(today: LlmHubToday, nowMs: number): void {
+    const data = this.read();
+    this.write({ ...data, todayCost: { fetchedAt: nowMs, ...today } });
   }
 
   isUsageFresh(usage: StoredUsage, nowMs: number): boolean {

@@ -197,6 +197,13 @@ export interface StatusJSON {
   readonly ai_used?: { readonly total_nano_aiu?: number; readonly formatted?: string };
   readonly copilot_quota?: CopilotQuotaState;
   readonly llm_hub_auto?: LlmHubAuto;
+  // Spend across all llm-hub profiles since local midnight, from the hub's stats endpoint.
+  readonly llm_hub_today?: LlmHubToday;
+}
+
+export interface LlmHubToday {
+  readonly costUsd: number;
+  readonly requests: number;
 }
 
 export interface SubagentTask {
