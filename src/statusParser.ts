@@ -374,7 +374,8 @@ export class StatusParser {
   private formatLlmHubAuto(auto: LlmHubAuto, effort: string | null): string {
     const label = auto.mode === 'smart-auto' ? StatusParser.LLM_HUB_SMART_AUTO_LABEL : StatusParser.LLM_HUB_AUTO_LABEL;
     const tier = auto.tier === null ? '' : ` (${auto.tier.charAt(0).toUpperCase()}${auto.tier.slice(1)})`;
-    const model = this.bareModel(auto.model);
+    // Smart Auto shows the qualified id: the same model name can exist on two profiles.
+    const model = auto.mode === 'smart-auto' ? auto.model : this.bareModel(auto.model);
     const priced = auto.price === undefined || model.length === 0
       ? model
       : `${model} · ${this.formatPrice(auto.price)}`;

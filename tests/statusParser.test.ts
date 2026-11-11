@@ -563,7 +563,7 @@ describe('buildSegments() — llm-hub Auto model', () => {
       model: { id: 'hub/smart-auto-balance' },
       llm_hub_auto: { model: 'copilot/model-a', complexity: null, tier: 'balance', mode: 'smart-auto', effort: 'low', state: 'started', reviewers: [] },
     }, cfg);
-    expect(modelValue(segs)).toBe('Smart Auto (Balance) → model-a (🧠 low)');
+    expect(modelValue(segs)).toBe('Smart Auto (Balance) → copilot/model-a (🧠 low)');
   });
 
   it('names one active reviewer after the main model', () => {
@@ -574,7 +574,7 @@ describe('buildSegments() — llm-hub Auto model', () => {
         reviewers: [{ model: 'copilot/model-b', effort: 'high' }],
       },
     }, cfg);
-    expect(modelValue(segs)).toBe('Smart Auto (Balance) → model-a (🧠 low) · reviewing: model-b');
+    expect(modelValue(segs)).toBe('Smart Auto (Balance) → copilot/model-a (🧠 low) · reviewing: model-b');
     expect(brainValues(segs)).toEqual(['low']);
   });
 
@@ -586,7 +586,7 @@ describe('buildSegments() — llm-hub Auto model', () => {
         reviewers: [{ model: 'copilot/model-b' }, { model: 'copilot/model-c' }],
       },
     }, cfg);
-    expect(modelValue(segs)).toBe('Smart Auto (Intelligence) → model-a (🧠 medium) · 2 reviewers');
+    expect(modelValue(segs)).toBe('Smart Auto (Intelligence) → copilot/model-a (🧠 medium) · 2 reviewers');
     expect(brainValues(segs)).toEqual(['medium']);
   });
 
@@ -603,7 +603,7 @@ describe('buildSegments() — llm-hub Auto model', () => {
       model: { id: 'hub/smart-auto-balance' },
       llm_hub_auto: { model: 'copilot/model-a', complexity: null, tier: 'balance', mode: 'smart-auto', effort: 'low', state: 'rejected', reviewers: [] },
     }, cfg);
-    expect(modelValue(segs)).toBe('Smart Auto (Balance) → model-a (🧠 low) · retrying');
+    expect(modelValue(segs)).toBe('Smart Auto (Balance) → copilot/model-a (🧠 low) · retrying');
   });
 
   it('marks a last-known selection stale with its age', () => {
@@ -611,7 +611,7 @@ describe('buildSegments() — llm-hub Auto model', () => {
       model: { id: 'hub/smart-auto-balance' },
       llm_hub_auto: { model: 'copilot/model-a', complexity: null, tier: 'balance', mode: 'smart-auto', effort: 'low', stale: true, ageMs: 185_000 },
     }, cfg);
-    expect(modelValue(segs)).toBe('Smart Auto (Balance) → model-a (🧠 low) · stale 3m');
+    expect(modelValue(segs)).toBe('Smart Auto (Balance) → copilot/model-a (🧠 low) · stale 3m');
   });
 
   it('shows no effort for an unobserved Smart Auto instead of the harness setting', () => {
