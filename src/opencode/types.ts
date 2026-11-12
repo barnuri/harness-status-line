@@ -1,5 +1,4 @@
-export interface OpencodeMessageTokens {
-  readonly total?: number;
+export interface OpencodeTokenUsage {
   readonly input?: number;
   readonly output?: number;
   readonly reasoning?: number;
@@ -9,51 +8,52 @@ export interface OpencodeMessageTokens {
   };
 }
 
-export interface OpencodeMessage {
-  readonly role?: string;
-  readonly modelID?: string;
+export interface OpencodeModelRef {
+  readonly id?: string;
   readonly providerID?: string;
-  readonly tokens?: OpencodeMessageTokens;
+}
+
+export interface OpencodeMessage {
+  readonly type?: string;
+  readonly model?: OpencodeModelRef;
+  readonly tokens?: OpencodeTokenUsage;
   readonly cost?: number;
 }
 
 export interface OpencodeModel {
+  readonly modelID?: string;
+  readonly providerID?: string;
   readonly name?: string;
   readonly limit?: {
     readonly context?: number;
   };
 }
 
-export interface OpencodeProvider {
-  readonly id?: string;
-  readonly models?: Readonly<Record<string, OpencodeModel>>;
-}
-
-export interface OpencodeRoute {
-  readonly name?: string;
-  readonly params?: {
-    readonly sessionID?: string;
-  };
-}
-
-export interface OpencodeTuiState {
-  readonly path?: {
-    readonly directory?: string;
-    readonly worktree?: string;
-  };
-  readonly provider?: ReadonlyArray<OpencodeProvider>;
-  readonly session?: {
-    readonly messages?: (sessionID: string) => ReadonlyArray<OpencodeMessage>;
-  };
-}
-
-/** The narrow slice of opencode's `TuiPluginApi` this status line actually reads. */
+/** The narrow slice of opencode 2's TUI plugin `Context` this status line reads. */
 export interface OpencodeTuiSlice {
   readonly app?: {
     readonly version?: string;
   };
-  readonly route?: {
-    readonly current?: OpencodeRoute;
+  readonly data?: {
+    readonly session?: {
+      readonly cost?: (sessionID: string) => number;
+      readonly message?: {
+        readonly list?: (sessionID: string) => ReadonlyArray<OpencodeMessage>;
+      };
+    };
+    readonly location?: {
+      readonly default?: () => { readonly directory?: string } | undefined;
+      readonly model?: {
+        readonly list?: () => ReadonlyArray<OpencodeModel> | undefined;
+      };
+    };
   };
-  readonly state?: OpencodeTuiState;
+  readonly ui?: {
+    readonly router?: {
+      readonly current?: () => { readonly type: string; readonly sessionID?: string } | undefined;
+    };
+    readonly model?: {
+      readonly current?: () => { readonly providerID: string; readonly modelID: string } | undefined;
+    };
+  };
 }

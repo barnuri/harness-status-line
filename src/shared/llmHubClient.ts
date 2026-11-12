@@ -47,6 +47,16 @@ export class LlmHubClient {
     return raw === null ? null : this.quotaReader.parseState(raw);
   }
 
+  // Quota of a non-Copilot profile with its own usage source (for example llmgw, in USD). 'no-source' when the hub
+  // answers 404, which is not a failed fetch.
+  async fetchProfileUsage(profile: string): Promise<CopilotQuotaState | null | 'no-source'> {
+    const response = await this.getResponse(`/api/profiles/${encodeURIComponent(profile)}/usage`);
+    if (response?.status === 404) {
+      return 'no-source';
+    }
+    return response?.ok ? this.quotaReader.parseState(response.body) : null;
+  }
+
   // Spend and request count across every profile since local midnight, from the hub's stats (cost estimated by its pricing book).
   async fetchTodayCost(): Promise<LlmHubToday | null> {
     const raw = await this.get(LlmHubClient.TODAY_STATS_PATH);
@@ -130,12 +140,17 @@ export class LlmHubClient {
   }
 
   private async get(pathAndQuery: string): Promise<string | null> {
+    const response = await this.getResponse(pathAndQuery);
+    return response?.ok ? response.body : null;
+  }
+
+  private async getResponse(pathAndQuery: string): Promise<{ status: number; ok: boolean; body: string } | null> {
     try {
       const response = await fetch(`${this.baseUrl}${pathAndQuery}`, {
         signal: AbortSignal.timeout(this.timeoutMs),
         headers: this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {},
       });
-      return response.ok ? await response.text() : null;
+      return { status: response.status, ok: response.ok, body: response.ok ? await response.text() : '' };
     } catch (err) {
       if (err instanceof Error) {
         return null;

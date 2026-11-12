@@ -1674,6 +1674,18 @@ describe('buildSegments() — Copilot CLI payload', () => {
     expect(segs.find(s => s.label === 'quota')?.value).toMatch(/^98\.4% used · reset in 21 days \(\d+ work days\)$/);
   });
 
+  it('shows a USD budget quota of a non-Copilot profile in dollars', () => {
+    const segs = parser.buildSegments(makeCopilotStatus({
+      copilot_quota: {
+        updatedAt: Date.now(),
+        source: 'bifrost/virtual-keys/quota',
+        quotas: [{ id: 'budget:1M', unit: 'usd', used: 10.07, entitlement: 200, remainingPercentage: 95 }],
+      },
+    }), cfg);
+
+    expect(segs.find(s => s.label === 'quota')?.value).toBe('$10.07/$200.00 · 5% used');
+  });
+
   const liveAicQuota = (resetDate: string): StatusJSON['copilot_quota'] => ({
     updatedAt: Date.now(),
     quotas: [{

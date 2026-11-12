@@ -106,7 +106,7 @@ export interface CreditBalance {
   readonly resets_at?: number;
 }
 
-export type CopilotQuotaUnit = 'aic' | 'requests';
+export type CopilotQuotaUnit = 'aic' | 'requests' | 'usd';
 
 export interface CopilotQuotaEntry {
   readonly id: string;
@@ -237,6 +237,8 @@ export interface SubagentRowOutput {
 export interface OpencodeStatusInput {
   readonly directory?: string;
   readonly model?: string;
+  readonly modelId?: string;
+  readonly providerId?: string;
   readonly sessionId?: string;
   readonly contextTokens?: number;
   readonly contextWindowSize?: number;

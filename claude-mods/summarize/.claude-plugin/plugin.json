@@ -18,6 +18,12 @@
       "title": "Show recap band",
       "description": "Show the latest summary in a one-line band above the prompt. Off by default",
       "default": false
+    },
+    "useClaudePane": {
+      "type": "boolean",
+      "title": "Use the Claude pane",
+      "description": "Show the recap in the Claude Code pane even inside herdr. Off (default): inside herdr, with the herdr-mods plugin (barnuri.mods) installed, the recap runs in a herdr pane beside Claude",
+      "default": false
     }
   }
 }

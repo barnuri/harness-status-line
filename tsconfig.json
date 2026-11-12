@@ -8,7 +8,7 @@
         "skipLibCheck": true,
         "noUncheckedIndexedAccess": true,
         "outDir": "dist",
-        "rootDir": "src",
+        "rootDir": ".",
         "allowImportingTsExtensions": true,
         "types": [
             "bun"

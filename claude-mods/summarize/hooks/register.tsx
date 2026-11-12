@@ -3,36 +3,23 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { ArtifactExtractor } from './artifactExtractor'
 import { IterationRecorder } from './iterationRecorder'
-import { OverviewFacts } from './overviewFacts'
-import { OverviewReader } from './overviewReader'
 import { RecapCursor } from './recapCursor'
 import { GitFacts } from './gitFacts'
 import { RecapView } from './recapView'
-import { RepoLink } from './repoLink'
+import { RecapErrorLog } from './recapErrorLog'
+import { RecapRepos } from './recapRepos'
+import { RecapSessionFiles } from './recapSessionFiles'
+
+import type { RecapHost } from './recapHost'
 
 import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapScope, SessionAnswers } from '../types'
 
-const PLUGIN = 'summarize'
 const PANE = 'summarize'
 const COMMAND = 'summarize'
 const PANE_ROWS = 28
 const MAX_ITERATIONS = 200
-const MAX_REPO_LOOKUPS = 8
-const GIT_TIMEOUT_MS = 3000
 const SESSION_DIRECTORY = '.'
-const SLUG_DIRECTORY = '.claude/session-slugs'
-const ERROR_LOG = '.claude/mod-errors/summarize.jsonl'
-const MAX_ERROR_LINES = 500
-const GH_TIMEOUT_MS = 5000
-const MS_PER_SECOND = 1000
-const COMMIT_CLOCK_SLACK_SECONDS = 5
-const MAX_TURN_COMMITS = 20
-const OVERVIEW_FACTS_FILE = 'overview-facts.json'
-const SESSION_OVERVIEW_SCRIPT = '.agents/skills/session-overview/scripts/render_overview.py'
-const RENDER_TIMEOUT_MS = 10000
-const DEFAULT_BRANCHES = new Set(['main', 'master', 'develop', 'HEAD'])
 const branchPullRequests = new Map<string, IterationRecapLink>()
-const GIT_STATE_COMMANDS = [['rev-parse', 'HEAD'], ['status', '--porcelain'], ['diff', 'HEAD', '--numstat']] as const
 const RESERVED_TOOL_KEYS = new Set(['tool', 'tool_use_id', 'agentId', 'consent'])
 
 const iterations = atom({ plugin: 'summarize', key: 'iterations' } as const, [] as IterationRecapEntry[])
@@ -79,107 +66,109 @@ function handlersFor($: EngineInterface): IterationRecapHandlers {
   }
 }
 
-async function repoRoot($: EngineInterface, directory: string): Promise<string | null> {
-  try {
-    const { exitCode, stdout } = await $.process.run(['git', '-C', directory, 'rev-parse', '--show-toplevel'], { timeoutMs: GIT_TIMEOUT_MS })
+function hostFor($: EngineInterface): RecapHost {
+  return {
+    run: (argv, options) => $.process.run([...argv], options),
+    exists: path => $.fs.exists(path),
+    read: async path => String(await $.fs.read(path)),
+    write: (path, text) => $.fs.write(path, text),
+    home: () => $.env.get('HOME'),
+    osType: () => $.env.get('OSTYPE'),
+    now: () => $.clock.now(),
+    sessionId: () => $.session.id(),
+    cwd: () => $.session.cwd(),
+  }
+}
 
-    return exitCode === 0 && stdout.trim() !== '' ? stdout.trim() : null
-  } catch (error) {
-    void logError($, `git lookup failed for ${directory}: ${error instanceof Error ? error.message : String(error)}`)
+function servicesFor($: EngineInterface): { repos: RecapRepos; files: RecapSessionFiles } {
+  const host = hostFor($)
+  const errors = new RecapErrorLog(host)
+  const repos = new RecapRepos(host, errors, branchPullRequests, SESSION_DIRECTORY)
 
+  return { repos, files: new RecapSessionFiles(host, repos, errors) }
+}
+
+const HERDR_MODS_PLUGIN_ID = 'barnuri.mods'
+const HERDR_MODS_VIEW = '../../opencode-summarize/view.ts'
+const HERDR_STATE_DIRECTORY = '.cache/herdr-mods/summarize'
+const HERDR_TIMEOUT_MS = 10000
+const UNSAFE_STATE_KEY = /[^A-Za-z0-9._-]/g
+let herdrModsRoot: string | null | undefined
+
+/** The herdr-mods plugin's folder (https://github.com/barnuri/herdr-mods), or null when it is not installed. */
+async function herdrModsPluginRoot($: EngineInterface): Promise<string | null> {
+  if (herdrModsRoot !== undefined) {
+    return herdrModsRoot
+  }
+  const { exitCode, stdout } = await $.process.run(['herdr', 'plugin', 'list', '--json'], { timeoutMs: HERDR_TIMEOUT_MS })
+  const plugins = exitCode === 0 ? ((JSON.parse(stdout || '{}') as { result?: { plugins?: { plugin_id?: string; plugin_root?: string }[] } }).result?.plugins ?? []) : []
+  herdrModsRoot = plugins.find(plugin => plugin.plugin_id === HERDR_MODS_PLUGIN_ID)?.plugin_root ?? null
+  return herdrModsRoot
+}
+
+/** This Claude pane's herdr pane id, or null outside herdr or without the herdr-mods plugin. */
+async function herdrBesidePane($: EngineInterface): Promise<string | null> {
+  if ((await $.env.get('HERDR_ENV')) !== '1') {
     return null
   }
-}
-
-async function repoRoots($: EngineInterface, directories: readonly string[]): Promise<string[]> {
-  const roots = await Promise.all(directories.slice(0, MAX_REPO_LOOKUPS).map(directory => repoRoot($, directory)))
-
-  return [...new Set(roots.filter((root): root is string => root !== null))]
-}
-
-async function gitOutput($: EngineInterface, root: string, args: readonly string[]): Promise<string> {
-  const { exitCode, stdout } = await $.process.run(['git', '-C', root, ...args], { timeoutMs: GIT_TIMEOUT_MS })
-
-  return exitCode === 0 ? stdout : ''
-}
-
-async function repoState($: EngineInterface, root: string): Promise<string | null> {
-  try {
-    const parts = await Promise.all(GIT_STATE_COMMANDS.map(args => gitOutput($, root, args)))
-
-    return parts.join('\n')
-  } catch (error) {
-    void logError($, `git state failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
-
+  const paneId = await $.env.get('HERDR_PANE_ID')
+  if (!paneId || (await herdrModsPluginRoot($)) === null) {
     return null
   }
-}
-
-async function sessionRepoSnapshot($: EngineInterface): Promise<{ root: string | null; state: string | null }> {
-  const root = await repoRoot($, SESSION_DIRECTORY)
-
-  return { root, state: root === null ? null : await repoState($, root) }
-}
-
-async function isRepoChangedSince($: EngineInterface, root: string | null, startState: string | null): Promise<boolean> {
-  if (root === null || startState === null) {
-    return false
-  }
-
-  return (await repoState($, root)) !== startState
-}
-
-async function repoLinks($: EngineInterface, roots: readonly string[]): Promise<IterationRecapLink[]> {
-  return Promise.all(roots.map(async root => RepoLink.fromRoot(root, await gitOutput($, root, ['remote', 'get-url', 'origin']))))
-}
-
-async function branchPullRequest($: EngineInterface, root: string): Promise<IterationRecapLink | null> {
-  const branch = (await gitOutput($, root, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
-  if (branch === '' || DEFAULT_BRANCHES.has(branch)) {
-    return null
-  }
-  const key = `${root}@${branch}`
-  const known = branchPullRequests.get(key)
-  if (known !== undefined) {
-    return known
-  }
-  try {
-    const { exitCode, stdout } = await $.process.run(['gh', 'pr', 'view', branch, '--json', 'number,url'], { cwd: root, timeoutMs: GH_TIMEOUT_MS })
-    const link = exitCode === 0 ? GitFacts.branchPullRequest(stdout) : null
-    if (link !== null) {
-      branchPullRequests.set(key, link)
-    }
-
-    return link
-  } catch (error) {
-    void logError($, `gh pr view failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
-
-    return null
-  }
+  return paneId
 }
 
 /**
- * Commits made on a default branch of `root` since `sinceMs`, as `abc123 message` links to the
- * commit page. Feature branches are skipped: their work shows as a PR.
+ * Writes the recap the herdr-mods pane draws (the opencode summarize view) and opens that pane beside
+ * this Claude pane. Returns whether a pane is open.
  */
-async function defaultBranchCommits($: EngineInterface, root: string, sinceMs: number): Promise<IterationRecapLink[]> {
+async function showHerdrPane($: EngineInterface, besidePaneId: string, state: unknown, isForced: boolean): Promise<boolean> {
+  const root = await herdrModsPluginRoot($)
+  const home = await $.env.get('HOME')
+  if (root === null || home === undefined) {
+    return false
+  }
+  const key = (await $.session.id()).replace(UNSAFE_STATE_KEY, '-')
+  await $.fs.write(`${home}/${HERDR_STATE_DIRECTORY}/${key}.json`, JSON.stringify(state))
+  const { exitCode, stdout } = await $.process.run(
+    [
+      'sh', `${root}/bin/bun.sh`, `${root}/bin/open.ts`,
+      '--mod-id', PANE,
+      '--view', `${$.plugin.root}/${HERDR_MODS_VIEW}`,
+      '--key', key,
+      '--beside', besidePaneId,
+      ...(isForced ? ['--force'] : []),
+    ],
+    { timeoutMs: HERDR_TIMEOUT_MS },
+  )
+  return exitCode === 0 && (JSON.parse(stdout || '{}') as { open?: boolean }).open === true
+}
+
+/**
+ * Inside herdr with the herdr-mods plugin (and `useClaudePane` off), shows the recap in a herdr pane
+ * and returns true; otherwise returns false so the caller uses the Claude pane.
+ */
+async function showInHerdr($: EngineInterface, isForced: boolean, useClaudePane: boolean, showFilePaths: boolean): Promise<boolean> {
+  if (useClaudePane) {
+    return false
+  }
   try {
-    const branch = (await gitOutput($, root, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
-    if (!DEFAULT_BRANCHES.has(branch)) {
-      return []
+    const besidePaneId = await herdrBesidePane($)
+    if (besidePaneId === null) {
+      return false
     }
-    const since = Math.floor(sinceMs / MS_PER_SECOND) - COMMIT_CLOCK_SLACK_SECONDS
-    const [log, remote] = await Promise.all([
-      gitOutput($, root, ['log', `--since=@${since}`, `-n${MAX_TURN_COMMITS}`, '--format=%H%x09%s', 'HEAD']),
-      gitOutput($, root, ['remote', 'get-url', 'origin']),
-    ])
-    const repoUrl = RepoLink.fromRoot(root, remote).url
-
-    return GitFacts.commitLinks(log, repoUrl)
+    const state = {
+      cwd: await $.session.cwd(),
+      showFilePaths,
+      entries: await read($, iterations),
+      answers: await read($, answers),
+      sessionHead: await read($, sessionHead),
+    }
+    await showHerdrPane($, besidePaneId, state, isForced)
+    return true
   } catch (error) {
-    void logError($, `commit lookup failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
-
-    return []
+    void new RecapErrorLog(hostFor($)).log(`herdr pane failed: ${RecapErrorLog.describe(error)}`)
+    return false
   }
 }
 
@@ -191,232 +180,22 @@ async function loadSessionHead($: EngineInterface): Promise<void> {
     return
   }
   isSessionHeadLoading = true
-  const root = await repoRoot($, SESSION_DIRECTORY)
-  const head = root === null ? null : await headCommit($, root)
+  const { repos } = servicesFor($)
+  const root = await repos.root(SESSION_DIRECTORY)
+  const head = root === null ? null : await repos.headCommit(root)
   await update($, sessionHead, () => head)
 }
 
-/** The current HEAD commit of `root`, whoever made it, as `abc123 message` linking to its page; `repo` names the repo. */
-async function headCommit($: EngineInterface, root: string): Promise<IterationRecapLink | null> {
-  try {
-    const [log, remote] = await Promise.all([
-      gitOutput($, root, ['log', '-1', '--format=%H%x09%s', 'HEAD']),
-      gitOutput($, root, ['remote', 'get-url', 'origin']),
-    ])
-    const link = GitFacts.commitLinks(log, RepoLink.fromRoot(root, remote).url)[0]
-
-    return link === undefined ? null : { ...link, repo: repoName(root) }
-  } catch (error) {
-    void logError($, `head commit lookup failed for ${root}: ${error instanceof Error ? error.message : String(error)}`)
-
-    return null
-  }
-}
-
-function repoName(root: string): string {
-  return root.split('/').at(-1) ?? root
-}
-
-/** The newest `overview.md` the session wrote or rendered that exists on disk. */
-async function sessionAnswersPath($: EngineInterface, list: readonly IterationRecapEntry[]): Promise<string | null> {
-  const paths = list
-    .flatMap(entry => [...entry.artifacts.files, ...(entry.artifacts.overviewFiles ?? [])])
-    .filter(path => OverviewReader.slugOf(path) !== null)
-  for (const path of [...new Set(paths)].reverse()) {
-    if (await $.fs.exists(path).catch(() => false)) {
-      return path
-    }
-  }
-
-  return null
-}
-
-/**
- * Appends one error to `~/.claude/mod-errors/summarize.jsonl` (newest `MAX_ERROR_LINES` kept), so an
- * audit can find and fix them, instead of printing them into the transcript.
- */
-async function logError($: EngineInterface, text: string): Promise<void> {
-  try {
-    const home = await $.env.get('HOME')
-    if (home === undefined) {
-      return
-    }
-    const path = `${home}/${ERROR_LOG}`
-    const previous = (await $.fs.exists(path)) ? String(await $.fs.read(path)) : ''
-    const line = JSON.stringify({ ts: new Date(await $.clock.now()).toISOString(), plugin: PLUGIN, error: text })
-    const lines = [...previous.split('\n').filter(entry => entry !== ''), line].slice(-MAX_ERROR_LINES)
-    await $.fs.write(path, `${lines.join('\n')}\n`)
-  } catch {
-    // Logging must never break the mod.
-  }
-}
-
-/** Opens a file with the OS default app (`open` on macOS, `xdg-open` elsewhere). */
 async function openFile($: EngineInterface, path: string): Promise<void> {
-  try {
-    const opener = (await $.env.get('OSTYPE'))?.startsWith('darwin') === false ? 'xdg-open' : 'open'
-    await $.process.run([opener, path], { timeoutMs: GIT_TIMEOUT_MS })
-  } catch (error) {
-    void logError($, `open failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
-  }
+  await servicesFor($).files.openFile(path)
 }
 
 async function loadAnswers($: EngineInterface): Promise<void> {
-  const list = await read($, iterations)
-  const path = (await publishedOverviewPath($, list)) ?? (await sessionAnswersPath($, list))
-  if (path === null) {
+  const loaded = await servicesFor($).files.answers(await read($, iterations))
+  if (loaded === null) {
     return
   }
-  try {
-    const text = await $.fs.read(path)
-    await update($, answers, () => OverviewReader.parse(String(text), path))
-  } catch (error) {
-    void logError($, `answers read failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
-  }
-}
-
-/** The `overview.md` of the published slug folder, when that file exists. */
-async function publishedOverviewPath($: EngineInterface, list: readonly IterationRecapEntry[]): Promise<string | null> {
-  const folder = await publishedSlugFolder($, list)
-  if (folder === null) {
-    return null
-  }
-  const path = `${folder}/${OverviewReader.FILE_NAME}`
-
-  return (await $.fs.exists(path)) ? path : null
-}
-
-/**
- * The folder `agent-spec/<slug>/` the session-slug skill published for this session, in the session
- * repo or a repo the session edited. Null when the session published none.
- */
-async function publishedSlugFolder($: EngineInterface, list: readonly IterationRecapEntry[]): Promise<string | null> {
-  try {
-    const home = await $.env.get('HOME')
-    if (home === undefined) {
-      return null
-    }
-    const slugFile = `${home}/${SLUG_DIRECTORY}/${await $.session.id()}`
-    if (!(await $.fs.exists(slugFile))) {
-      return null
-    }
-    const slug = String(await $.fs.read(slugFile)).trim()
-    if (slug === '') {
-      return null
-    }
-    const editedDirectories = list.flatMap(entry => entry.artifacts.files).map(file => file.slice(0, file.lastIndexOf('/')))
-    const roots = await repoRoots($, [SESSION_DIRECTORY, ...new Set(editedDirectories)])
-    for (const root of roots) {
-      const folder = `${root}/agent-spec/${slug}`
-      if (await $.fs.exists(folder)) {
-        return folder
-      }
-    }
-
-    return null
-  } catch (error) {
-    void logError($, `published slug lookup failed: ${error instanceof Error ? error.message : String(error)}`)
-
-    return null
-  }
-}
-
-/**
- * Writes `overview-facts.json` into `folder`, built from the iterations and the session HEAD. Returns
- * false after logging the error when the write fails.
- */
-async function writeOverviewFacts($: EngineInterface, folder: string, list: readonly IterationRecapEntry[]): Promise<boolean> {
-  try {
-    const document = OverviewFacts.build({
-      slug: folder.slice(folder.lastIndexOf('/') + 1),
-      sessionId: await $.session.id(),
-      cwd: await $.session.cwd(),
-      iterations: list,
-      sessionHead: await read($, sessionHead),
-    })
-    await $.fs.write(`${folder}/${OVERVIEW_FACTS_FILE}`, OverviewFacts.serialize(document))
-
-    return true
-  } catch (error) {
-    void logError($, `overview facts write failed for ${folder}: ${error instanceof Error ? error.message : String(error)}`)
-
-    return false
-  }
-}
-
-/** The session-overview renderer under `~/.agents/skills`, or null when the skill is not installed. */
-async function overviewScript($: EngineInterface): Promise<string | null> {
-  const home = await $.env.get('HOME')
-  if (home === undefined) {
-    return null
-  }
-  const script = `${home}/${SESSION_OVERVIEW_SCRIPT}`
-
-  return (await $.fs.exists(script)) ? script : null
-}
-
-/** `/summarize overview`: writes the facts, renders `session-overview.html` in the slug folder, and opens it. */
-async function renderOverview($: EngineInterface, list: readonly IterationRecapEntry[]): Promise<string> {
-  const folder = await publishedSlugFolder($, list)
-  if (folder === null) {
-    return 'No published slug folder for this session.'
-  }
-  if (!(await writeOverviewFacts($, folder, list))) {
-    return 'Overview not written.'
-  }
-  const script = await overviewScript($)
-  if (script === null) {
-    return 'session-overview skill not installed.'
-  }
-  try {
-    const { exitCode, stdout, stderr } = await $.process.run(['python3', '-I', script, folder], { timeoutMs: RENDER_TIMEOUT_MS })
-    const html = stdout.trim()
-    if (exitCode !== 0 || html === '') {
-      void logError($, `render_overview exited ${exitCode} for ${folder}: ${stderr.trim()}`)
-
-      return 'Overview not written.'
-    }
-    await openFile($, html)
-
-    return `Overview: ${html}`
-  } catch (error) {
-    void logError($, `render_overview failed for ${folder}: ${error instanceof Error ? error.message : String(error)}`)
-
-    return 'Overview not written.'
-  }
-}
-
-async function resolveRepos($: EngineInterface, entry: IterationRecapEntry, scope: IterationRecapScope): Promise<IterationRecapEntry> {
-  try {
-    const [touchedRoots, changedRoots, isSessionRepoChanged] = await Promise.all([
-      repoRoots($, scope.touchedDirectories),
-      repoRoots($, scope.changedDirectories),
-      isRepoChangedSince($, scope.startRoot, scope.startState),
-    ])
-    const allChangedRoots = isSessionRepoChanged && scope.startRoot !== null ? [scope.startRoot, ...changedRoots] : changedRoots
-    const repos = [...new Set([...[...allChangedRoots, ...touchedRoots].map(repoName), ...entry.artifacts.repos])]
-    const uniqueChangedRoots = [...new Set(allChangedRoots)]
-    const prRoots = [...new Set([...uniqueChangedRoots, ...touchedRoots, ...(scope.startRoot === null ? [] : [scope.startRoot])])]
-    const [rootLinks, branchLinks, commitLinks, headLinks] = await Promise.all([
-      repoLinks($, uniqueChangedRoots),
-      Promise.all(prRoots.map(root => branchPullRequest($, root))),
-      Promise.all(uniqueChangedRoots.map(root => defaultBranchCommits($, root, entry.startedAt))),
-      Promise.all(prRoots.map(root => headCommit($, root))),
-    ])
-    const changedRepos = RepoLink.unique([...rootLinks, ...ArtifactExtractor.createdPullRequestRepos(entry.artifacts)])
-    const knownLabels = new Set(entry.artifacts.pullRequests.map(link => link.label))
-    const branchPrs = branchLinks.filter((link): link is IterationRecapLink => link !== null && !knownLabels.has(link.label))
-
-    return {
-      ...entry,
-      artifacts: { ...entry.artifacts, repos, changedRepos, pullRequests: [...entry.artifacts.pullRequests, ...branchPrs], commitLinks: commitLinks.flat(),
-        headCommits: headLinks.filter((link): link is IterationRecapLink => link !== null) },
-    }
-  } catch (error) {
-    void logError($, `repo lookup failed for iteration ${entry.index}: ${error instanceof Error ? error.message : String(error)}`)
-
-    return { ...entry, artifacts: { ...entry.artifacts, changedRepos: ArtifactExtractor.createdPullRequestRepos(entry.artifacts) } }
-  }
+  await update($, answers, () => loaded)
 }
 
 export const register: Register = (on, options) => {
@@ -424,6 +203,7 @@ export const register: Register = (on, options) => {
   let turnStartRepo: { root: string | null; state: string | null } = { root: null, state: null }
   const isBandEnabled = options.showBand === true
   const showFilePaths = options.showFilePaths === true
+  const useClaudePane = options.useClaudePane === true
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -431,7 +211,9 @@ export const register: Register = (on, options) => {
       description: 'Summarize the last iteration and keep summarizing new ones; browse earlier ones (prev, next, last, <n>, band); write the session overview (overview)',
       argumentHint: '[prev|next|last|<n>|band|overview]',
     })
-    await autoOpenPane($)
+    if (useClaudePane || (await herdrBesidePane($).catch(() => null)) === null) {
+      await autoOpenPane($)
+    }
     void loadSessionHead($)
 
     return next(e)
@@ -439,7 +221,7 @@ export const register: Register = (on, options) => {
 
   on('turn.start', async ($, e, next) => {
     recorder.start(e.turnId, e.text, await $.clock.now())
-    turnStartRepo = await sessionRepoSnapshot($)
+    turnStartRepo = await servicesFor($).repos.snapshot()
 
     return next(e)
   })
@@ -481,15 +263,18 @@ export const register: Register = (on, options) => {
     if (recorded === null) {
       return done
     }
-    const entry = await resolveRepos($, recorded, scope)
+    const { repos, files } = servicesFor($)
+    const entry = await repos.resolve(recorded, scope)
     await update($, iterations, current => [...current, entry].slice(-MAX_ITERATIONS))
     const saved = await read($, iterations)
-    const folder = await publishedSlugFolder($, saved)
+    const folder = await files.publishedSlugFolder(saved)
     if (folder !== null) {
-      await writeOverviewFacts($, folder, saved)
+      await files.writeOverviewFacts(folder, saved, await read($, sessionHead))
     }
     await loadAnswers($)
-    await autoOpenPane($)
+    if (!(await showInHerdr($, false, useClaudePane, showFilePaths))) {
+      await autoOpenPane($)
+    }
 
     return done
   })
@@ -505,14 +290,16 @@ export const register: Register = (on, options) => {
       return { text: isHidden ? 'Recap band shown.' : 'Recap band hidden.' }
     }
     if (word === 'overview') {
-      return { text: await renderOverview($, await read($, iterations)) }
+      return { text: await servicesFor($).files.renderOverview(await read($, iterations), await read($, sessionHead)) }
     }
     const list = await read($, iterations)
     const current = await read($, cursor)
     const target = word === '' ? current : RecapCursor.parse(word, list, current)
     await update($, cursor, () => target)
     await update($, isPaneDismissed, () => false)
-    await openPane($)
+    if (!(await showInHerdr($, true, useClaudePane, showFilePaths))) {
+      await openPane($)
+    }
 
     return { text: RecapView.commandText(RecapCursor.selected(list, target), list, await $.session.cwd(), await read($, answers), showFilePaths, await read($, sessionHead)) }
   })

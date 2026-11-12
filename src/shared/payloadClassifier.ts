@@ -2,7 +2,8 @@ import type { PayloadKind, StatusJSON } from '../types.ts';
 
 // Decides once which harness sent the status JSON, so only that harness's enricher runs.
 export class PayloadClassifier {
-  private static readonly HUB_MODEL = /^[^/\s]+\/[^/\s]+$/;
+  // `<profile>/<model>`; a model can carry its own path, as in `llmgw/azure/gpt-5.4-mini`.
+  private static readonly HUB_MODEL = /^[^/\s]+\/\S+$/;
   private static readonly ANTHROPIC_HOST = /(^|\.)anthropic\.com$/;
 
   private readonly env: Readonly<Record<string, string | undefined>>;

@@ -22,6 +22,10 @@ describe('PayloadClassifier', () => {
     expect(classify({ model: { id: 'claude-opus-5-5', display_name: 'copilot/auto' } } as StatusJSON)).toBe('claude-hub');
   });
 
+  it('classifies a hub-qualified model id with its own path as claude-hub', () => {
+    expect(classify({ model: { id: 'llmgw/azure/gpt-5.4-mini', display_name: 'GPT' } } as StatusJSON)).toBe('claude-hub');
+  });
+
   it('classifies an Anthropic model id as claude', () => {
     expect(classify({ model: { id: 'claude-opus-5-5', display_name: 'Opus 5.5' } } as StatusJSON)).toBe('claude');
   });

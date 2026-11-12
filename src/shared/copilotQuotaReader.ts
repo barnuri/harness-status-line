@@ -100,7 +100,7 @@ export class CopilotQuotaReader {
       return null;
     }
 
-    const unit = value['unit'] === 'aic' || value['unit'] === 'requests' ? value['unit'] : undefined;
+    const unit = value['unit'] === 'aic' || value['unit'] === 'requests' || value['unit'] === 'usd' ? value['unit'] : undefined;
     const used = this.isFiniteNumber(value['used']) ? value['used'] : undefined;
     const entitlement = this.isFiniteNumber(value['entitlement']) ? value['entitlement'] : undefined;
     const remaining = this.isFiniteNumber(value['remaining']) ? value['remaining'] : undefined;

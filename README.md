@@ -9,7 +9,7 @@ A Bun/TypeScript status line for coding-agent harnesses — not Claude Code only
 | **Copilot CLI** | stdin `statusLine.command` (`~/.copilot/settings.json`) |
 | **Codex** | same stdin JSON contract; slug via `CODEX_THREAD_ID` (`~/.codex/config.toml` has no command hook) |
 | **Pi** | stdin `statusLine` command via [`pi-statusline`](https://pi.dev/packages/pi-statusline) (`~/.pi/agent/settings.json`) |
-| **opencode** | TUI plugin (`~/.config/opencode/tui.json`) |
+| **opencode** | TUI plugin (`~/.config/opencode/cli.json`, opencode 2) |
 
 `--setup` installs the stdin command for Claude Code, Cursor, and Copilot CLI. Codex, Pi, and opencode are manual (see below). Session slugs also resolve Grok, Gemini, and DeepSeek session ids when those env vars are set.
 
@@ -359,44 +359,58 @@ exact same `buildSegments` pipeline — so the segments, colours, and thresholds
 
 ### Enabling it
 
-Add the plugin's **absolute path** to `~/.config/opencode/tui.json`:
+opencode 2 loads TUI plugins from `~/.config/opencode/cli.json`. List the **absolute path** of
+this repo's `opencode-plugin/` folder (its `tui.ts` re-exports `src/opencode/plugin.ts`):
 
 ```json
 {
-  "plugin": ["/absolute/path/to/harness-status-line/src/opencode/plugin.ts"]
+  "plugins": ["/absolute/path/to/harness-status-line/opencode-plugin"]
 }
 ```
 
-Then restart opencode — config is read once at startup.
-
-> **Use `tui.json`, not `opencode.jsonc`.** The `plugin` array in `opencode.jsonc` is the *server*
-> plugin loader; it will load this module and call its `tui` export with a server `PluginInput`,
-> which has no `slots` and therefore fails.
+Then restart opencode. A path to the `.ts` file itself is ignored: opencode 2 loads a folder and
+looks for `tui.ts` in it. The line renders full width at the bottom of the app (`app` slot).
 
 ### Where the data comes from
 
 | Segment | Source |
 |---|---|
-| folder | `api.state.path.directory` (falls back to `worktree`) |
-| slug | `~/.claude/session-slugs/<session id>` — the same file every stdin harness reads |
+| folder | `context.data.location.default().directory` |
+| slug | `~/.claude/session-slugs/<session id>` (the route's session) — the same file every stdin harness reads |
 | git branch | derived from the folder by the shared parser |
 | ghx profile | `ghx ghx current` run in the folder by the shared parser; hidden when [ghx](https://github.com/barnuri/ghx) is not installed or no profile matches |
-| model | `api.state.provider[…].models[modelID].name` for the newest assistant message |
-| context % / size | that message's `tokens` (`total`, else input + output + reasoning + cache) against the model's `limit.context` |
+| model | the newest assistant message's model, else the prompt's selected model, named from `context.data.location.model.list()` |
+| context % / size | that message's `tokens` (input + output + reasoning + cache) against the model's `limit.context` |
+| session cost | `context.data.session.cost(sessionID)` |
 | auth, rate limits | `~/.claude/usage-snapshot.json` |
+| llm-hub (provider `llm-hub`, from `llm-hub opencode`) | the same `LlmHubEnricher` as Claude Code on the hub: Smart Auto or Auto pick with its price, the served context window, quota and today's spend. `LLM_HUB_URL` and `LLM_HUB_API_KEY` locate the hub (default `http://localhost:8888`) |
 
-Rate limits are Claude-specific and never reach opencode, so they are read from the snapshot that
-the Claude status-line wrapper already writes. **If that snapshot is missing or older than 15
-minutes, the rate-limit and auth segments are omitted** rather than shown stale — everything else
-still renders.
+Rate limits are Claude-specific, so they are read from the snapshot that the Claude status-line
+wrapper already writes. **If that snapshot is missing or older than 15 minutes, the rate-limit and
+auth segments are omitted** rather than shown stale. On llm-hub the Claude rate limits are always
+dropped, and a $0 session cost is dropped too: opencode prices a Smart Auto turn at $0 because the
+requested model has no fixed price.
 
 ### Known differences from the stdin status line
 
 - **No powerline separators.** An opencode slot is a component tree, not a character stream, so
   segments render as padded coloured boxes instead of `` glyph joins. Wrapping is handled by
   the TUI's own flex layout rather than this repo's width calculation.
-- Model and context segments only appear once a session has an assistant message; on the
-  opencode home screen there is nothing to report yet.
+- Segments rebuild at most once a second. llm-hub data arrives in the background and shows on the
+  next render.
+
+### Summarize recap (opencode)
+
+`opencode-summarize/mod.ts` is the summarize Claude mod as a [herdr-mods](https://github.com/barnuri/herdr-mods)
+mod. Each opencode session's recap runs in a herdr pane beside opencode. The pane reuses the mod's
+own `RecapView` with its buttons and hotkeys. The pane opens after a new turn, and `/summarize`
+reopens it. `/summarize overview` writes the session overview page. List the mod in herdr-mods'
+`mods` option.
+
+It shares the mod's logic: the extractor, the recorder, `RecapRepos` (git and `gh`), `RecapSessionFiles`
+(slug folder, `overview.md`, `overview-facts.json`, the overview page) and `RecapText`.
+`opencode-summarize/tui.ts` is an older plugin that draws the recap inside opencode (sidebar, panel,
+band). It is not enabled by default.
 
 ## Development
 

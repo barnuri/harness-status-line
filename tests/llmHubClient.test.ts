@@ -78,6 +78,14 @@ describe('LlmHubClient', () => {
         if (url.pathname === '/api/copilot/usage' && url.searchParams.get('profile') === 'copilot') {
           return Response.json(usageBody);
         }
+        if (url.pathname === '/api/profiles/llmgw/usage') {
+          return Response.json({
+            profile: 'llmgw',
+            source: 'bifrost/virtual-keys/quota',
+            updatedAt: 1_000,
+            quotas: [{ id: 'budget:1M', unit: 'usd', used: 10, entitlement: 200, remainingPercentage: 95 }],
+          });
+        }
         return new Response('not found', { status: 404 });
       },
     });
@@ -171,6 +179,16 @@ describe('LlmHubClient', () => {
 
   it('returns null on a 404', async () => {
     expect(await new LlmHubClient(baseUrl).fetchUsage('openai')).toBeNull();
+  });
+
+  it('parses a non-Copilot profile quota in USD', async () => {
+    const state = await new LlmHubClient(baseUrl).fetchProfileUsage('llmgw');
+
+    expect(state?.quotas).toEqual([{ id: 'budget:1M', unit: 'usd', used: 10, entitlement: 200, remainingPercentage: 95 }]);
+  });
+
+  it('reports a profile without a usage source as no-source, not as a failure', async () => {
+    expect(await new LlmHubClient(baseUrl).fetchProfileUsage('ivrit')).toBe('no-source');
   });
 
   it('returns null when the hub is unreachable', async () => {

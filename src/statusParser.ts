@@ -670,6 +670,9 @@ export class StatusParser {
       const dollars = `${usd(entry.used)}/${usd(entry.entitlement)}`;
       return showAic ? `~${amounts} AIC (${dollars})` : `~${dollars}`;
     }
+    if (entry.unit === 'usd') {
+      return `$${entry.used.toFixed(StatusParser.DOLLAR_DECIMALS)}/$${entry.entitlement.toFixed(StatusParser.DOLLAR_DECIMALS)}`;
+    }
     return entry.unit === 'requests' ? `${amounts} req` : null;
   }
 

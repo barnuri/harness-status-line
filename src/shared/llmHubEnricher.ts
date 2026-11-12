@@ -39,7 +39,7 @@ export class LlmHubEnricher {
     const isCopilot = profile === LlmHubEnricher.COPILOT_PROFILE;
     const isHub = profile === LlmHubEnricher.HUB_PROFILE;
     if (!isCopilot && !isHub) {
-      return status;
+      return this.applyOwnProfileQuota(status, baseUrl, profile, nowMs);
     }
 
     const client = new LlmHubClient(baseUrl, this.env['ANTHROPIC_AUTH_TOKEN'], this.timeoutMs);
@@ -72,9 +72,20 @@ export class LlmHubEnricher {
         llm_hub_auto: served.oneMillion && result.llm_hub_auto ? { ...result.llm_hub_auto, model: `${result.llm_hub_auto.model}[1m]` } : result.llm_hub_auto,
       };
     }
+    // A model served by another profile (for example llmgw) shows that profile's own quota. Only a bare Auto name
+    // carries no profile, so it falls through to the Copilot quota below.
+    const servedModel = result.llm_hub_auto?.model;
+    const servedProfile = servedModel?.includes('/') ? servedModel.split('/')[0] : undefined;
+    const ownQuotaProfile =
+      servedProfile !== undefined && servedProfile !== '' && servedProfile !== LlmHubEnricher.COPILOT_PROFILE && servedProfile !== LlmHubEnricher.HUB_PROFILE
+        ? servedProfile
+        : undefined;
     // Quota is Copilot-only. A Smart Auto session shows it once it has used a Copilot model; a Smart Auto session with none has no Copilot seat to report.
     const copilotSession = isHub && status.session_id !== undefined && store.wasCopilotUsed(status.session_id);
-    if ((isCopilot || copilotSession) && !status.copilot_quota) {
+    if (ownQuotaProfile !== undefined && !status.copilot_quota) {
+      const quota = await this.resolveUsage(client, store, ownQuotaProfile, nowMs);
+      result = quota ? { ...result, copilot_quota: quota, rate_limits: undefined } : result;
+    } else if ((isCopilot || copilotSession) && !status.copilot_quota) {
       const quota = await this.resolveUsage(client, store, LlmHubEnricher.COPILOT_PROFILE, nowMs);
       // Rate limits in a hub session describe the Anthropic login, not the Copilot seat that serves it.
       result = quota ? { ...result, copilot_quota: quota, rate_limits: undefined } : result;
@@ -84,6 +95,17 @@ export class LlmHubEnricher {
     return result;
   }
 
+
+  // A session started on another profile's model (for example llmgw/...) shows that profile's quota, and nothing else from the hub.
+  private async applyOwnProfileQuota(status: StatusJSON, baseUrl: string, profile: string, nowMs: number): Promise<StatusJSON> {
+    if (status.copilot_quota) {
+      return status;
+    }
+    const client = new LlmHubClient(baseUrl, this.env['ANTHROPIC_AUTH_TOKEN'], this.timeoutMs);
+    const store = new LlmHubStore(client.baseUrl, this.storeDir);
+    const quota = await this.resolveUsage(client, store, profile, nowMs);
+    return quota ? { ...status, copilot_quota: quota, rate_limits: undefined } : status;
+  }
 
   private async resolveDecision(
     client: LlmHubClient,
@@ -141,7 +163,10 @@ export class LlmHubEnricher {
     if (store.isBackingOff(nowMs)) {
       return stored ? this.withoutExpiredQuotas(stored.state, nowMs) : null;
     }
-    const state = await client.fetchUsage(profile);
+    const state = profile === LlmHubEnricher.COPILOT_PROFILE ? await client.fetchUsage(profile) : await client.fetchProfileUsage(profile);
+    if (state === 'no-source') {
+      return null;
+    }
     if (state === null) {
       store.recordFailure(nowMs);
       return stored ? this.withoutExpiredQuotas(stored.state, nowMs) : null;

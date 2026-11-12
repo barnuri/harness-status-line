@@ -1,5 +1,6 @@
 import type { Elements, RenderElement, RenderSurface } from 'claude-code'
 
+import { RecapText } from './recapText'
 import { SessionTotals } from './sessionTotals'
 
 import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapPaneLayout, SessionAnswer, SessionAnswers } from '../types'
@@ -7,10 +8,8 @@ import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, I
 type RecapViewElements = Pick<Elements[RenderSurface], 'Box' | 'Text' | 'Button' | 'Link'>
 
 export class RecapView {
-  private static readonly LABEL_WIDTH = 10
   private static readonly HISTORY_ROWS = 8
   private static readonly COLLAPSED_ANSWERS = 3
-  private static readonly NONE = 'none'
   private static readonly COLORS = {
     accent: 'cyan',
     session: 'magenta',
@@ -28,8 +27,6 @@ export class RecapView {
     open: 'yellow',
     prompt: 'gray',
   } as const
-  private static readonly MS_PER_SECOND = 1000
-  private static readonly SECONDS_PER_MINUTE = 60
   private static readonly TOKENS_PER_K = 1000
 
   public static pane(
@@ -68,6 +65,10 @@ export class RecapView {
     )
   }
 
+  public static commandText(...args: Parameters<typeof RecapText.commandText>): string {
+    return RecapText.commandText(...args)
+  }
+
   public static band(
     elements: RecapViewElements,
     latest: IterationRecapEntry,
@@ -75,14 +76,14 @@ export class RecapView {
     handlers: IterationRecapHandlers,
   ): RenderElement {
     const { Box, Text, Button } = elements
-    const openQuestions = RecapView.openQuestions(latest).length
+    const openQuestions = RecapText.openQuestions(latest).length
 
     return (
       <Box flexDirection="row">
         <Box flexGrow={1} flexShrink={1}>
           <Text wrap="truncate-end">
             <Text bold color={RecapView.COLORS.accent}>↻ #{latest.index}/{total}</Text>
-            <Text dimColor> {RecapView.duration(latest.durationMs)} · </Text>
+            <Text dimColor> {RecapText.duration(latest.durationMs)} · </Text>
             <Text color={RecapView.COLORS.summary}>{latest.summary}</Text>
             {openQuestions > 0 && <Text color={RecapView.COLORS.open}> · {openQuestions} open ?</Text>}
           </Text>
@@ -97,39 +98,6 @@ export class RecapView {
     )
   }
 
-  public static commandText(
-    selected: IterationRecapEntry | undefined,
-    iterations: readonly IterationRecapEntry[],
-    cwd: string,
-    answers: SessionAnswers | null = null,
-    showFilePaths = false,
-    sessionHead: IterationRecapLink | null = null,
-  ): string {
-    if (selected === undefined) {
-      return 'No iterations recorded yet.'
-    }
-    const { artifacts } = selected
-    const lines = [
-      'This session',
-      RecapView.alwaysTextRow('repos', SessionTotals.changedRepos(iterations).map(repo => repo.url ?? repo.label)),
-      RecapView.alwaysTextRow('PRs', SessionTotals.pullRequests(iterations).map(pr => pr.url ?? pr.label)),
-      RecapView.textRow('commits', SessionTotals.commits(iterations).map(commit => commit.url ?? commit.label)),
-      ...SessionTotals.lastCommits(iterations, sessionHead).map((commit, index) =>
-        `${(index === 0 ? 'last' : '').padEnd(RecapView.LABEL_WIDTH)}${commit.repo === undefined ? '' : `${commit.repo} `}${commit.url ?? commit.label}`),
-      RecapView.alwaysTextRow('skills', SessionTotals.skills(iterations)),
-      ...RecapView.answerLines(answers),
-      `Iteration ${selected.index}/${iterations.length} · ${RecapView.clock(selected.startedAt)} · ${RecapView.duration(selected.durationMs)}`,
-      selected.summary,
-      RecapView.alwaysTextRow('tools', RecapView.toolList(selected)),
-      RecapView.textRow('files', RecapView.fileValues(artifacts.files, cwd, showFilePaths)),
-      RecapView.textRow('reviews', artifacts.reviews),
-      RecapView.textRow('plans', artifacts.plans.map(plan => RecapView.relative(plan, cwd))),
-      RecapView.textRow('commits', artifacts.commits),
-      RecapView.textRow('open', RecapView.openQuestions(selected)),
-    ]
-
-    return lines.filter(line => line !== '').join('\n')
-  }
 
   private static session(
     elements: RecapViewElements,
@@ -161,7 +129,7 @@ export class RecapView {
     handlers: IterationRecapHandlers,
   ): RenderElement | null {
     const { Box, Text, Button } = elements
-    const all = RecapView.sessionAnswers(answers)
+    const all = RecapText.sessionAnswers(answers)
     const items = isQaOpen ? all : all.slice(-RecapView.COLLAPSED_ANSWERS)
     if (items.length === 0) {
       return null
@@ -185,25 +153,13 @@ export class RecapView {
     )
   }
 
-  /** Answers the session gave to user prompts with a `?`, from overview.md. */
-  private static sessionAnswers(answers: SessionAnswers | null): SessionAnswer[] {
-    return (answers?.items ?? []).filter(item => item.answer !== '')
-  }
 
-  private static answerLines(answers: SessionAnswers | null): string[] {
-    const items = RecapView.sessionAnswers(answers)
-    if (items.length === 0) {
-      return []
-    }
-
-    return [`Answers (${answers?.session || answers?.slug || 'this session'})`, ...items.map(item => `${item.number} ${item.answer}\n    ↳ ${item.question}`)]
-  }
 
   private static header(elements: RecapViewElements, selected: IterationRecapEntry, total: number): RenderElement {
     const { Box, Text } = elements
     const facts = [
-      RecapView.clock(selected.startedAt),
-      RecapView.duration(selected.durationMs),
+      RecapText.clock(selected.startedAt),
+      RecapText.duration(selected.durationMs),
       selected.outputTokens > 0 ? `${RecapView.tokens(selected.outputTokens)} out` : '',
       selected.endReason === 'answer' ? '' : selected.endReason,
     ].filter(fact => fact !== '')
@@ -223,13 +179,13 @@ export class RecapView {
 
     return (
       <Box flexDirection="column">
-        {RecapView.alwaysRow(elements, 'tools', RecapView.toolList(selected), RecapView.COLORS.tools)}
-        {RecapView.row(elements, 'files', RecapView.fileValues(artifacts.files, cwd, layout.showFilePaths), RecapView.COLORS.files)}
+        {RecapView.alwaysRow(elements, 'tools', RecapText.toolList(selected), RecapView.COLORS.tools)}
+        {RecapView.row(elements, 'files', RecapText.fileValues(artifacts.files, cwd, layout.showFilePaths), RecapView.COLORS.files)}
         {RecapView.row(elements, 'reviews', artifacts.reviews, RecapView.COLORS.reviews)}
-        {RecapView.row(elements, 'plans', artifacts.plans.map(plan => RecapView.relative(plan, cwd)), RecapView.COLORS.plans)}
+        {RecapView.row(elements, 'plans', artifacts.plans.map(plan => RecapText.relative(plan, cwd)), RecapView.COLORS.plans)}
         {RecapView.row(elements, 'commits', artifacts.commits, RecapView.COLORS.commits)}
         {RecapView.row(elements, 'asked', answeredQuestions, RecapView.COLORS.asked)}
-        {RecapView.row(elements, 'open ?', RecapView.openQuestions(selected), RecapView.COLORS.open)}
+        {RecapView.row(elements, 'open ?', RecapText.openQuestions(selected), RecapView.COLORS.open)}
       </Box>
     )
   }
@@ -240,7 +196,7 @@ export class RecapView {
     return (
       <Box flexDirection="column" marginTop={1}>
         <Text bold color={RecapView.COLORS.prompt}>prompt</Text>
-        <Text color={RecapView.COLORS.prompt} wrap="wrap">{selected.prompt === '' ? RecapView.NONE : selected.prompt}</Text>
+        <Text color={RecapView.COLORS.prompt} wrap="wrap">{selected.prompt === '' ? RecapText.NONE : selected.prompt}</Text>
       </Box>
     )
   }
@@ -286,7 +242,7 @@ export class RecapView {
             {RecapView.action(
               elements,
               `jump-${entry.index}`,
-              `#${entry.index} ${RecapView.clock(entry.startedAt)} ${entry.summary}`,
+              `#${entry.index} ${RecapText.clock(entry.startedAt)} ${entry.summary}`,
               () => handlers.onJump(entry.index),
               { isDisabled: entry.index !== selected.index },
             )}
@@ -302,8 +258,8 @@ export class RecapView {
 
     return (
       <Box flexDirection="row">
-        <Text bold color={color}>{label.padEnd(RecapView.LABEL_WIDTH)}</Text>
-        <Text color={isEmpty ? undefined : color} dimColor={isEmpty} wrap="wrap">{isEmpty ? RecapView.NONE : values.join(', ')}</Text>
+        <Text bold color={color}>{label.padEnd(RecapText.LABEL_WIDTH)}</Text>
+        <Text color={isEmpty ? undefined : color} dimColor={isEmpty} wrap="wrap">{isEmpty ? RecapText.NONE : values.join(', ')}</Text>
       </Box>
     )
   }
@@ -324,8 +280,8 @@ export class RecapView {
 
     return (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-        <Text bold color={color}>{label.padEnd(RecapView.LABEL_WIDTH - 2)}</Text>
-        {links.length === 0 && <Text dimColor>{RecapView.NONE}</Text>}
+        <Text bold color={color}>{label.padEnd(RecapText.LABEL_WIDTH - 2)}</Text>
+        {links.length === 0 && <Text dimColor>{RecapText.NONE}</Text>}
         {links.map(link => {
           const url = link.url
           const text = `${link.isCreated === true ? '+ ' : ''}${RecapView.shortLabel(link.label)}`
@@ -340,34 +296,10 @@ export class RecapView {
     )
   }
 
-  private static toolList(entry: IterationRecapEntry): string[] {
-    const tools = Object.entries(entry.toolCounts)
-      .sort(([, left], [, right]) => right - left)
-      .map(([tool, count]) => `${tool}×${count}`)
 
-    return tools.length === 0 ? [] : [tools.join('  ')]
-  }
 
-  private static openQuestions(entry: IterationRecapEntry): string[] {
-    return entry.artifacts.questions.filter(question => !question.isAnswered).map(question => question.text)
-  }
 
-  private static alwaysTextRow(label: string, values: readonly string[]): string {
-    return `${label.padEnd(RecapView.LABEL_WIDTH)}${values.length === 0 ? RecapView.NONE : values.join(', ')}`
-  }
 
-  private static textRow(label: string, values: readonly string[]): string {
-    return values.length === 0 ? '' : RecapView.alwaysTextRow(label, values)
-  }
-
-  /** File paths when `showPaths`, else one count such as `3 files`. */
-  private static fileValues(files: readonly string[], cwd: string, showPaths: boolean): string[] {
-    if (files.length === 0) {
-      return []
-    }
-
-    return showPaths ? files.map(file => RecapView.relative(file, cwd)) : [`${files.length} file${files.length === 1 ? '' : 's'}`]
-  }
 
   /**
    * The one style for everything clickable (links and buttons): underlined text in the action
@@ -409,7 +341,7 @@ export class RecapView {
 
           return (
             <Box key={`${label}-${commit.repo ?? ''}-${index}`} flexDirection="row">
-              <Text bold color={RecapView.COLORS.commits}>{(index === 0 ? label : '').padEnd(RecapView.LABEL_WIDTH)}</Text>
+              <Text bold color={RecapView.COLORS.commits}>{(index === 0 ? label : '').padEnd(RecapText.LABEL_WIDTH)}</Text>
               {repoWidth > 0 && <Text dimColor>{(commit.repo ?? '').padEnd(repoWidth)}</Text>}
               {url === undefined
                 ? <Text>{commit.label}</Text>
@@ -433,27 +365,10 @@ export class RecapView {
     return url.startsWith('file://') ? url.slice('file://'.length) : url
   }
 
-  private static relative(path: string, cwd: string): string {
-    const prefix = cwd.endsWith('/') ? cwd : `${cwd}/`
 
-    return cwd !== '' && path.startsWith(prefix) ? path.slice(prefix.length) : path
-  }
-
-  private static duration(ms: number): string {
-    const totalSeconds = Math.round(ms / RecapView.MS_PER_SECOND)
-    const minutes = Math.floor(totalSeconds / RecapView.SECONDS_PER_MINUTE)
-    const seconds = totalSeconds % RecapView.SECONDS_PER_MINUTE
-
-    return minutes === 0 ? `${seconds}s` : `${minutes}m${String(seconds).padStart(2, '0')}s`
-  }
 
   private static tokens(count: number): string {
     return count < RecapView.TOKENS_PER_K ? String(count) : `${(count / RecapView.TOKENS_PER_K).toFixed(1)}k`
   }
 
-  private static clock(epochMs: number): string {
-    const date = new Date(epochMs)
-
-    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-  }
 }

@@ -1,36 +1,35 @@
+import { jsx } from '@opentui/solid/jsx-runtime';
 import type { JSX } from '@opentui/solid/jsx-runtime';
 import { ConfigManager } from '../configManager.ts';
 import { StatusParser } from '../statusParser.ts';
 import { UsageSnapshotReader } from '../shared/usageSnapshot.ts';
+import { OpencodeHubEnricher } from './hubEnricher.ts';
 import { OpencodeStateReader } from './opencodeStateReader.ts';
 import { OpencodeStatusRenderer } from './opencodeStatusRenderer.ts';
 import { OpencodeStatusSource } from './statusSource.ts';
 import type { Segment } from '../types.ts';
 import type { OpencodeTuiSlice } from './types.ts';
 
-type SlotRegisteringApi = { slots: { register: (plugin: unknown) => string } } & OpencodeTuiSlice;
+interface SlotClaim {
+  readonly append: string;
+  readonly render: (input: { readonly sessionID?: string }) => JSX.Element;
+}
+
+type RevisionStore = readonly [{ readonly revision: number }, (mutation: (draft: { revision: number }) => void) => void];
+
+type PluginContext = OpencodeTuiSlice & {
+  readonly ui: { readonly slot: (claim: SlotClaim) => () => void };
+  readonly storage: { memory(key: string, options: { readonly initial: { revision: number } }): RevisionStore };
+};
 
 /**
- * opencode TUI plugin entry.
- *
- * Loading contract (all four are required — violating any one fails silently):
- *   1. this file must stay `.ts` — opencode's loader ignores `.tsx`, and importing a `.tsx` from
- *      here stops the module from being evaluated at all;
- *   2. it must be listed in `~/.config/opencode/tui.json` under `plugin` (NOT opencode.jsonc's
- *      `plugin` array — that is the server loader, which calls `tui` with a server PluginInput);
- *   3. the default export must be `{ id, tui }` — both fields, or the host never invokes it;
- *   4. nodes are built with `jsx()` calls, never JSX syntax, which follows from (1).
+ * opencode 2 TUI plugin, listed in `~/.config/opencode/cli.json` under `plugins`. The file stays
+ * `.ts` and builds nodes with `jsx()` calls. The line sits under the prompt footer.
  */
 class OpencodeStatusLinePlugin {
-  private static readonly SLOT = 'app_bottom';
-
-  /**
-   * Building segments costs a config file read, a snapshot file read, and — via the shared
-   * parser's git branch lookup — a synchronous `git` subprocess. The slot re-renders on any
-   * tracked TUI state change, so recomputing per render would block the render loop. None of
-   * these inputs change meaningfully within a second.
-   */
-  private static readonly CACHE_TTL_MS = 1_000;
+  private static readonly ANCHOR = 'app';
+  /** Segments cost file reads, a `git` subprocess and, on llm-hub, HTTP calls: rebuild at most once a second. */
+  private static readonly REBUILD_INTERVAL_MS = 1_000;
 
   private readonly stateReader = new OpencodeStateReader();
   private readonly snapshotReader = new UsageSnapshotReader();
@@ -38,47 +37,112 @@ class OpencodeStatusLinePlugin {
   private readonly parser = new StatusParser();
   private readonly renderer = new OpencodeStatusRenderer();
   private readonly configManager = new ConfigManager();
+  private readonly hubEnricher = new OpencodeHubEnricher();
+  private readonly revision: RevisionStore;
 
-  private cachedSegments: Segment[] | null = null;
-  private cachedAtMs = 0;
+  private segments: Segment[] = [];
+  private builtAtMs = 0;
+  private builtInputKey = '';
+  private hubRefreshing = false;
+  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
-  register(api: SlotRegisteringApi): void {
-    api.slots.register({
-      slots: {
-        [OpencodeStatusLinePlugin.SLOT]: () => this.renderSafely(api),
-      },
-    });
+  // The host's store is the reactive source: a signal from this repo's own solid-js copy is not tracked by the host.
+  constructor(private readonly context: PluginContext) {
+    this.revision = context.storage.memory('harness-status-line', { initial: { revision: 0 } });
   }
 
-  private renderSafely(api: OpencodeTuiSlice): JSX.Element | null {
+  register(): () => void {
+    const release = this.context.ui.slot({
+      append: OpencodeStatusLinePlugin.ANCHOR,
+      render: (input) => {
+        const plugin = this;
+        return jsx('box', {
+          style: { width: '100%' },
+          get children() {
+            return plugin.renderSafely(input.sessionID);
+          },
+        });
+      },
+    });
+    return () => {
+      clearTimeout(this.refreshTimer);
+      release();
+    };
+  }
+
+  private renderSafely(sessionId: string | undefined): JSX.Element | null {
     try {
-      return this.renderer.render(this.segments(api, Date.now()));
+      return this.renderer.render(this.currentSegments(sessionId));
     } catch {
       return null;
     }
   }
 
-  private segments(api: OpencodeTuiSlice, nowMs: number): Segment[] {
-    const cached = this.cachedSegments;
-    if (cached && nowMs - this.cachedAtMs < OpencodeStatusLinePlugin.CACHE_TTL_MS) {
-      return cached;
+  // Reads the reactive opencode state on every call, so the line follows new messages and model switches.
+  private currentSegments(sessionId: string | undefined): Segment[] {
+    void this.revision[0].revision;
+    const input = this.stateReader.read(this.context, sessionId);
+    const inputKey = JSON.stringify(input);
+    const nowMs = Date.now();
+    const sinceBuildMs = nowMs - this.builtAtMs;
+    if (sinceBuildMs < OpencodeStatusLinePlugin.REBUILD_INTERVAL_MS) {
+      if (inputKey !== this.builtInputKey) {
+        this.scheduleRebuild(OpencodeStatusLinePlugin.REBUILD_INTERVAL_MS - sinceBuildMs);
+      }
+      return this.segments;
     }
+    this.builtAtMs = nowMs;
+    this.builtInputKey = inputKey;
+    const base = this.statusSource.build(input, this.snapshotReader.read(nowMs));
+    const config = this.configManager.load();
+    if (!this.hubEnricher.applies(input)) {
+      this.segments = this.parser.buildSegments(base, config);
+      return this.segments;
+    }
+    if (this.segments.length === 0) {
+      this.segments = this.parser.buildSegments(base, config);
+    }
+    if (!this.hubRefreshing) {
+      this.hubRefreshing = true;
+      void this.hubEnricher
+        .apply(input, base)
+        .then((status) => {
+          this.segments = this.parser.buildSegments(status, config);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          this.hubRefreshing = false;
+          this.bumpRevision();
+        });
+    }
+    return this.segments;
+  }
 
-    const status = this.statusSource.build(this.stateReader.read(api), this.snapshotReader.read(nowMs));
-    const segments = this.parser.buildSegments(status, this.configManager.load());
+  private scheduleRebuild(delayMs: number): void {
+    if (this.refreshTimer !== undefined) {
+      return;
+    }
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = undefined;
+      this.bumpRevision();
+    }, delayMs);
+  }
 
-    this.cachedSegments = segments;
-    this.cachedAtMs = nowMs;
-    return segments;
+  private bumpRevision(): void {
+    this.revision[1]((draft) => {
+      draft.revision += 1;
+    });
   }
 }
 
-const tui = async (api: SlotRegisteringApi): Promise<void> => {
-  try {
-    new OpencodeStatusLinePlugin().register(api);
-  } catch {
-    /* never throw into the TUI — a broken status line must not take opencode down */
-  }
+export default {
+  id: 'harness-status-line',
+  setup(context: PluginContext): (() => void) | undefined {
+    try {
+      return new OpencodeStatusLinePlugin(context).register();
+    } catch {
+      /* never throw into the TUI — a broken status line must not take opencode down */
+      return undefined;
+    }
+  },
 };
-
-export default { id: 'harness-status-line', tui };
