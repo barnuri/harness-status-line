@@ -3,7 +3,7 @@ import type { Elements, RenderElement, RenderSurface } from 'claude-code'
 import { RecapText } from './recapText'
 import { SessionTotals } from './sessionTotals'
 
-import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapPaneLayout, SessionAnswer, SessionAnswers } from '../types'
+import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapPaneLayout, SessionAnswers, SessionOverview } from '../types'
 
 type RecapViewElements = Pick<Elements[RenderSurface], 'Box' | 'Text' | 'Button' | 'Link'>
 
@@ -38,6 +38,7 @@ export class RecapView {
     handlers: IterationRecapHandlers,
     answers: SessionAnswers | null = null,
     sessionHead: IterationRecapLink | null = null,
+    overview: SessionOverview | null = null,
   ): RenderElement {
     const { Box, Text } = elements
     if (selected === undefined) {
@@ -51,7 +52,7 @@ export class RecapView {
     return (
       <Box flexDirection="column" minHeight={layout.bodyRows}>
         <Box flexDirection="column" flexGrow={1}>
-          {RecapView.session(elements, iterations, handlers, sessionHead)}
+          {RecapView.session(elements, iterations, handlers, sessionHead, overview)}
           {RecapView.answers(elements, answers, iterations, layout.isQaOpen, handlers)}
           {RecapView.header(elements, selected, iterations.length)}
           <Text bold color={RecapView.COLORS.summary} wrap="wrap">{selected.summary}</Text>
@@ -104,6 +105,7 @@ export class RecapView {
     iterations: readonly IterationRecapEntry[],
     handlers: IterationRecapHandlers,
     sessionHead: IterationRecapLink | null,
+    overview: SessionOverview | null,
   ): RenderElement {
     const { Box, Text } = elements
     const last = SessionTotals.lastCommits(iterations, sessionHead)
@@ -111,6 +113,7 @@ export class RecapView {
     return (
       <Box flexDirection="column">
         <Text bold color={RecapView.COLORS.session}>◆ This session</Text>
+        {RecapView.slugRow(elements, overview, handlers)}
         {RecapView.alwaysLinkRow(elements, 'repos', SessionTotals.changedRepos(iterations), RecapView.COLORS.changed, handlers)}
         {last.length > 0 && RecapView.commitLines(elements, 'last', last, handlers)}
         {RecapView.alwaysLinkRow(elements, 'PRs', SessionTotals.pullRequests(iterations), RecapView.COLORS.links, handlers)}
@@ -135,13 +138,11 @@ export class RecapView {
       return null
     }
     const hidden = all.length - items.length
-    const html = answers === null ? undefined : answers.path.replace(/overview\.md$/, 'session-overview.html')
 
     return (
       <Box flexDirection="column">
         <Text bold color={RecapView.COLORS.session}>◆ Answers ({all.length})  <Text dimColor>{answers?.session || answers?.slug || 'this session'}</Text></Text>
         {hidden > 0 && <Text dimColor>  {hidden} earlier, press q for all</Text>}
-        {html !== undefined && <Box flexDirection="row">{RecapView.action(elements, 'open-overview', 'open overview', () => handlers.onOpenFile(html), { hotkey: 'o' })}</Box>}
         {items.map((item, index) => (
           <Box key={`answer-${index}`} flexDirection="column">
             <Text wrap="wrap"><Text bold color={RecapView.COLORS.accent}>{item.number.padEnd(5)}</Text><Text bold color={RecapView.COLORS.asked}>{item.answer}</Text></Text>
@@ -154,6 +155,22 @@ export class RecapView {
   }
 
 
+
+  /** The slug, and the button that opens its `session-overview.html`; `none` when the session has no slug folder. */
+  private static slugRow(elements: RecapViewElements, overview: SessionOverview | null, handlers: IterationRecapHandlers): RenderElement {
+    const { Box, Text } = elements
+    const label = <Text bold color={RecapView.COLORS.session}>{'slug'.padEnd(RecapText.LABEL_WIDTH)}</Text>
+    if (overview === null) {
+      return <Box flexDirection="row">{label}<Text dimColor>{RecapText.NONE}</Text></Box>
+    }
+
+    return (
+      <Box flexDirection="row" columnGap={2}>
+        <Box flexDirection="row">{label}<Text color={RecapView.COLORS.session}>{overview.slug}</Text></Box>
+        {RecapView.action(elements, 'open-overview', 'session overview', () => handlers.onOpenOverview(overview.html), { hotkey: 'o' })}
+      </Box>
+    )
+  }
 
   private static header(elements: RecapViewElements, selected: IterationRecapEntry, total: number): RenderElement {
     const { Box, Text } = elements

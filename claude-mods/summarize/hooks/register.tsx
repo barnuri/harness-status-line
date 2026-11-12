@@ -12,7 +12,7 @@ import { RecapSessionFiles } from './recapSessionFiles'
 
 import type { RecapHost } from './recapHost'
 
-import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapScope, SessionAnswers } from '../types'
+import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapScope, SessionAnswers, SessionOverview } from '../types'
 
 const PANE = 'summarize'
 const COMMAND = 'summarize'
@@ -28,6 +28,7 @@ const isBandHidden = atom({ plugin: 'summarize', key: 'isBandHidden' } as const,
 const isPaneDismissed = atom({ plugin: 'summarize', key: 'isPaneDismissed' } as const, false)
 const isActive = atom({ plugin: 'summarize', key: 'isActive' } as const, true)
 const answers = atom({ plugin: 'summarize', key: 'answers' } as const, null as SessionAnswers | null)
+const overview = atom({ plugin: 'summarize', key: 'overview' } as const, null as SessionOverview | null)
 const sessionHead = atom({ plugin: 'summarize', key: 'sessionHead' } as const, null as IterationRecapLink | null)
 const isPromptOpen = atom({ plugin: 'summarize', key: 'isPromptOpen' } as const, false)
 const isHistoryOpen = atom({ plugin: 'summarize', key: 'isHistoryOpen' } as const, false)
@@ -63,6 +64,7 @@ function handlersFor($: EngineInterface): IterationRecapHandlers {
     onToggleHistory: () => void update($, isHistoryOpen, isOpen => !isOpen),
     onToggleQa: () => void update($, isQaOpen, isOpen => !isOpen).then(() => loadAnswers($)),
     onOpenFile: path => void openFile($, path),
+    onOpenOverview: html => void servicesFor($).files.openOverview(html),
   }
 }
 
@@ -74,6 +76,7 @@ function hostFor($: EngineInterface): RecapHost {
     write: (path, text) => $.fs.write(path, text),
     home: () => $.env.get('HOME'),
     osType: () => $.env.get('OSTYPE'),
+    isInsideHerdr: async () => (await $.env.get('HERDR_ENV')) === '1',
     now: () => $.clock.now(),
     sessionId: () => $.session.id(),
     cwd: () => $.session.cwd(),
@@ -163,6 +166,7 @@ async function showInHerdr($: EngineInterface, isForced: boolean, useClaudePane:
       entries: await read($, iterations),
       answers: await read($, answers),
       sessionHead: await read($, sessionHead),
+      overview: await read($, overview),
     }
     await showHerdrPane($, besidePaneId, state, isForced)
     return true
@@ -190,6 +194,11 @@ async function openFile($: EngineInterface, path: string): Promise<void> {
   await servicesFor($).files.openFile(path)
 }
 
+async function loadOverview($: EngineInterface): Promise<void> {
+  const found = await servicesFor($).files.overview(await read($, iterations))
+  await update($, overview, () => found)
+}
+
 async function loadAnswers($: EngineInterface): Promise<void> {
   const loaded = await servicesFor($).files.answers(await read($, iterations))
   if (loaded === null) {
@@ -214,6 +223,7 @@ export const register: Register = (on, options) => {
     if (useClaudePane || (await herdrBesidePane($).catch(() => null)) === null) {
       await autoOpenPane($)
     }
+    await loadOverview($)
     void loadSessionHead($)
 
     return next(e)
@@ -267,10 +277,9 @@ export const register: Register = (on, options) => {
     const entry = await repos.resolve(recorded, scope)
     await update($, iterations, current => [...current, entry].slice(-MAX_ITERATIONS))
     const saved = await read($, iterations)
-    const folder = await files.publishedSlugFolder(saved)
-    if (folder !== null) {
-      await files.writeOverviewFacts(folder, saved, await read($, sessionHead))
-    }
+    await loadSessionHead($)
+    const refreshed = await files.refreshOverview(saved, await read($, sessionHead))
+    await update($, overview, () => refreshed)
     await loadAnswers($)
     if (!(await showInHerdr($, false, useClaudePane, showFilePaths))) {
       await autoOpenPane($)
@@ -283,6 +292,7 @@ export const register: Register = (on, options) => {
     const word = e.args.trim().toLowerCase()
     await update($, isActive, () => true)
     await loadAnswers($)
+    await loadOverview($)
     if (word === 'band') {
       const isHidden = await read($, isBandHidden)
       await update($, isBandHidden, () => !isHidden)
@@ -301,7 +311,7 @@ export const register: Register = (on, options) => {
       await openPane($)
     }
 
-    return { text: RecapView.commandText(RecapCursor.selected(list, target), list, await $.session.cwd(), await read($, answers), showFilePaths, await read($, sessionHead)) }
+    return { text: RecapView.commandText(RecapCursor.selected(list, target), list, await $.session.cwd(), await read($, answers), showFilePaths, await read($, sessionHead), false, await read($, overview)) }
   })
 
   on('ui.close', async ($, e, next) => {
@@ -324,9 +334,7 @@ export const register: Register = (on, options) => {
       bodyRows: e.props.scroll.bodyRows,
     }
 
-    void loadSessionHead($)
-
-    return RecapView.pane($.ui.resolve(e), list, selected, await $.session.cwd(), layout, handlersFor($), await read($, answers), await read($, sessionHead))
+    return RecapView.pane($.ui.resolve(e), list, selected, await $.session.cwd(), layout, handlersFor($), await read($, answers), await read($, sessionHead), await read($, overview))
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

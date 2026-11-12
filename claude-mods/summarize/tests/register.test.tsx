@@ -269,7 +269,7 @@ test('counts the session repo as changed when its git state moved during the tur
   await clock.settle()
 
   const answer = await $.command.run(SUMMARIZE)
-  expect(answer.text).toMatch(/This session\nrepos\s+file:\/\/\/work\/web/)
+  expect(answer.text).toMatch(/This session\nslug\s+none\nrepos\s+file:\/\/\/work\/web/)
 })
 
 test('records skills from skill.prompt, typed before the turn or loaded during it', async ($, on) => {
@@ -345,9 +345,42 @@ test('finds an overview.md written through Bash and opens session-overview.html'
 
   const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: 'Postgres.' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'open overview' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '2026-11-08-db' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'session overview' })).toBeDefined()
   await ui.press({ key: 'open-overview' })
   expect(opened).toContainEqual(['open', '/work/web/agent-spec/2026-11-08-db/session-overview.html'])
+  await ui.unmount()
+})
+
+test('shows the slug and the session overview button with no answers, and none without a slug folder', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const present = ['/home/me/.claude/session-slugs/sess-1', '/work/web/agent-spec/2026-11-08-x']
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', [], '/home/me', path => present.includes(path))
+  on('session.id', async () => ({ value: 'sess-1' }))
+  on('fs.read', async () => ({ value: '2026-11-08-x\n' }))
+
+  await runIteration($, 't1', 'fix the login redirect', 'Fixed it.')
+  await clock.advance(10)
+
+  const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: '◆ Answers' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '2026-11-08-x' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'session overview' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the slug row shows none when the session has no slug folder', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', [], '/home/me', () => false)
+  on('fs.read', async () => ({ value: '' }))
+
+  await runIteration($, 't1', 'fix it', 'Fixed.')
+  await clock.advance(10)
+
+  const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: 'session overview' })).toBeUndefined()
+  const answer = await $.command.run(SUMMARIZE)
+  expect(answer.text).toContain('slug      none')
   await ui.unmount()
 })
 
@@ -385,7 +418,9 @@ test('/summarize overview writes the facts, runs the renderer with python3 -I, a
 
   await runIteration($, 't1', 'fix the login redirect', 'Fixed it.')
   await clock.advance(10)
+  expect(rendered).toEqual([['python3', '-I', script, folder]])
   written.length = 0
+  rendered.length = 0
 
   const answer = await $.command.run({ ...SUMMARIZE, args: 'overview' })
   expect(answer.text).toBe(`Overview: ${folder}/session-overview.html`)

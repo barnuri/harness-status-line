@@ -1,11 +1,20 @@
+import { join } from 'node:path';
+import { FileOpener } from '../claude-mods/summarize/hooks/fileOpener.ts';
 import { RecapCursor } from '../claude-mods/summarize/hooks/recapCursor.ts';
+import { RecapErrorLog } from '../claude-mods/summarize/hooks/recapErrorLog.ts';
 import { RecapView } from '../claude-mods/summarize/hooks/recapView.tsx';
 import type { IterationRecapHandlers } from '../claude-mods/summarize/types';
+import { OpencodeRecapHost } from '../src/opencode/summarize/opencodeRecapHost.ts';
+import { PaneOverviewOpener } from '../src/opencode/summarize/paneOverviewOpener.ts';
+import type { PaneTakeover } from '../src/opencode/summarize/paneOverviewOpener.ts';
 import type { SummarizePaneState } from '../src/opencode/summarize/types.ts';
 
-interface PaneUi {
+const BACK_SCRIPT = join(import.meta.dir, 'overviewBack.js');
+
+interface PaneUi extends PaneTakeover {
   readonly elements: { readonly Box: string; readonly Text: string; readonly Button: string; readonly Link: string };
   readonly rows: number;
+  readonly key: string;
   local<Value>(name: string, initial: Value): readonly [Value, (next: Value) => void];
   open(target: string): void;
   close(): void;
@@ -29,6 +38,7 @@ export default function view(state: SummarizePaneState | null, ui: PaneUi): unkn
     onToggleHistory: () => setHistoryOpen(!isHistoryOpen),
     onToggleQa: () => setQaOpen(!isQaOpen),
     onOpenFile: (path) => ui.open(path),
+    onOpenOverview: (html) => void new PaneOverviewOpener(ui, BACK_SCRIPT, () => overviewOpener(state, ui)).open(html),
   };
   return RecapView.pane(
     ui.elements as never,
@@ -39,5 +49,12 @@ export default function view(state: SummarizePaneState | null, ui: PaneUi): unkn
     handlers,
     state?.answers ?? null,
     state?.sessionHead ?? null,
+    state?.overview ?? null,
   );
+}
+
+// The fallback when the pane cannot be taken over: a terminal-browser split below this pane, else the OS opener.
+function overviewOpener(state: SummarizePaneState | null, ui: PaneUi): FileOpener {
+  const host = new OpencodeRecapHost(() => ui.key, () => state?.cwd ?? process.cwd());
+  return new FileOpener(host, new RecapErrorLog(host));
 }

@@ -1,6 +1,6 @@
 import { SessionTotals } from './sessionTotals'
 
-import type { IterationRecapEntry, IterationRecapLink, SessionAnswer, SessionAnswers } from '../types'
+import type { IterationRecapEntry, IterationRecapLink, SessionAnswer, SessionAnswers, SessionOverview } from '../types'
 
 /** The recap as plain text: the `/summarize` reply, and the rows the pane and other hosts reuse. */
 export class RecapText {
@@ -17,6 +17,7 @@ export class RecapText {
     showFilePaths = false,
     sessionHead: IterationRecapLink | null = null,
     isLabelOnly = false,
+    overview: SessionOverview | null = null,
   ): string {
     const show = (link: IterationRecapLink): string => (isLabelOnly ? link.label : (link.url ?? link.label))
     if (selected === undefined) {
@@ -25,6 +26,7 @@ export class RecapText {
     const { artifacts } = selected
     const lines = [
       'This session',
+      RecapText.alwaysTextRow('slug', overview === null ? [] : [isLabelOnly ? overview.slug : `${overview.slug} ${overview.html}`]),
       RecapText.alwaysTextRow('repos', SessionTotals.changedRepos(iterations).map(show)),
       RecapText.alwaysTextRow('PRs', SessionTotals.pullRequests(iterations).map(show)),
       RecapText.textRow('commits', SessionTotals.commits(iterations).map(show)),

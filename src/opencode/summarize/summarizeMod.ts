@@ -20,13 +20,14 @@ interface ModHostApi {
 export class SummarizeMod {
   static readonly ID = 'summarize';
   private static readonly OVERVIEW_WORD = 'overview';
+  private static readonly STARTUP_POLL_MS = 1000;
 
   private readonly recaps: SessionRecaps;
 
   constructor(private readonly api: ModHostApi) {
     const context = api.opencode as SummarizeContext;
-    this.recaps = new SessionRecaps(context.data, () => api.directory(), (sessionId, recap, isTurnFinished) =>
-      this.onChange(sessionId, recap, isTurnFinished),
+    this.recaps = new SessionRecaps(context.data, () => api.directory(), (sessionId, recap, isTurnFinished, isInitial) =>
+      this.onChange(sessionId, recap, isTurnFinished, isInitial),
     );
   }
 
@@ -43,8 +44,28 @@ export class SummarizeMod {
       },
       setup: (api: ModHostApi) => {
         instance = new SummarizeMod(api);
-        return instance.recaps.watch();
+        return instance.start();
       },
+    };
+  }
+
+  /** Follows turn events, and loads the session the person opens at startup or resume so its pane opens by itself. */
+  start(): () => void {
+    const release = this.recaps.watch();
+    let timer: ReturnType<typeof setInterval> | undefined = setInterval(() => {
+      const sessionId = this.api.currentSessionId();
+      if (sessionId === undefined) {
+        return;
+      }
+      clearInterval(timer);
+      timer = undefined;
+      this.recaps.recapOf(sessionId);
+    }, SummarizeMod.STARTUP_POLL_MS);
+    return () => {
+      if (timer !== undefined) {
+        clearInterval(timer);
+      }
+      release();
     };
   }
 
@@ -53,7 +74,7 @@ export class SummarizeMod {
     if (!sessionId) {
       return 'Open a session first.';
     }
-    const recap = this.recaps.recapOf(sessionId);
+    const recap = await this.recaps.ready(sessionId);
     if (args.toLowerCase() === SummarizeMod.OVERVIEW_WORD) {
       return recap.renderOverview();
     }
@@ -62,9 +83,9 @@ export class SummarizeMod {
     return isOpen ? undefined : 'The recap pane did not open.';
   }
 
-  private async onChange(sessionId: string, recap: OpencodeSessionRecap, isTurnFinished: boolean): Promise<void> {
+  private async onChange(sessionId: string, recap: OpencodeSessionRecap, isTurnFinished: boolean, isInitial: boolean): Promise<void> {
     await this.publish(sessionId, recap);
-    if (isTurnFinished && recap.entries.length > 0) {
+    if ((isTurnFinished || isInitial) && recap.entries.length > 0) {
       await this.api.openPane(sessionId);
     }
   }
@@ -75,6 +96,7 @@ export class SummarizeMod {
       showFilePaths: this.api.options['showFilePaths'] === true,
       entries: recap.entries,
       answers: recap.answers,
+      overview: recap.overview,
       sessionHead: recap.sessionHead,
     };
     await this.api.publish(sessionId, state);

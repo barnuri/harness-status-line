@@ -75,6 +75,7 @@ export type IterationRecapHandlers = {
   onToggleHistory: () => void;
   onToggleQa: () => void;
   onOpenFile: (path: string) => void;
+  onOpenOverview: (html: string) => void;
 };
 
 export type IterationRecapPaneLayout = {
@@ -88,6 +89,9 @@ export type IterationRecapPaneLayout = {
 export type SessionAnswer = { number: string; question: string; answer: string };
 
 export type SessionAnswers = { path: string; slug: string; session: string; items: SessionAnswer[] };
+
+/** The session's `agent-spec/<slug>/` folder and its `session-overview.html` page. */
+export type SessionOverview = { slug: string; folder: string; html: string };
 
 /** The overview-facts.json document (schemaVersion 1). Answers are not part of it. */
 export type OverviewFactsDocument = {
@@ -114,6 +118,7 @@ declare module 'claude-code' {
     'summarize': {
       iterations: IterationRecapEntry[];
       answers: SessionAnswers | null;
+      overview: SessionOverview | null;
       sessionHead: IterationRecapLink | null;
       cursor: number | null;
       isBandHidden: boolean;

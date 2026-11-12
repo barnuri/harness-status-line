@@ -29,9 +29,9 @@ export class SummarizePlugin {
     this.revision = context.storage.memory('summarize', { initial: { revision: 0 } });
     this.showFilePaths = context.options?.['showFilePaths'] === true;
     this.isBandShown = context.options?.['showBand'] === true;
-    this.recaps = new SessionRecaps(context.data, () => this.directory(), (sessionId, recap, isTurnFinished) => {
+    this.recaps = new SessionRecaps(context.data, () => this.directory(), (sessionId, recap, isTurnFinished, isInitial) => {
       this.bump();
-      if (isTurnFinished) {
+      if (isTurnFinished || isInitial) {
         this.autoOpenPanel(sessionId, recap);
       }
     });
@@ -110,7 +110,7 @@ export class SummarizePlugin {
     if (recap.entries.length === 0) {
       return isOpenedPanel ? [jsx('text', { fg: SummarizePlugin.MUTED_COLOR, children: 'No iterations recorded yet.' })] : [];
     }
-    const text = RecapText.commandText(recap.selected(), recap.entries, this.directory(), recap.answers, this.showFilePaths, recap.sessionHead, true);
+    const text = RecapText.commandText(recap.selected(), recap.entries, this.directory(), recap.answers, this.showFilePaths, recap.sessionHead, true, recap.overview);
     return [
       jsx('text', { fg: SummarizePlugin.HEADING_COLOR, children: 'Summarize' }),
       ...text.split('\n').map((line) =>
@@ -147,7 +147,7 @@ export class SummarizePlugin {
       this.toast('Open a session first.');
       return;
     }
-    const recap = this.recaps.recapOf(sessionId);
+    const recap = await this.recaps.ready(sessionId);
     const word = input.trim().toLowerCase();
     if (word === SummarizePlugin.OVERVIEW_WORD) {
       this.toast(await recap.renderOverview());

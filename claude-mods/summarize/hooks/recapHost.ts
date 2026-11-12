@@ -5,6 +5,7 @@ export interface RecapHost {
   write(path: string, text: string): Promise<void>
   home(): Promise<string | undefined>
   osType(): Promise<string | undefined>
+  isInsideHerdr(): Promise<boolean>
   now(): Promise<number>
   sessionId(): Promise<string>
   cwd(): Promise<string>

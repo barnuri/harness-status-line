@@ -94,8 +94,14 @@ describe('OpencodeSessionRecap', () => {
       root: async () => null,
       headCommit: async () => null,
     } as unknown as RecapRepos;
-    const files = { publishedSlugFolder: async () => null, answers: async () => null } as unknown as RecapSessionFiles;
-    return { recap: new OpencodeSessionRecap(repos, files), resolved };
+    const overview = { slug: '2026-11-12-x', folder: '/repo/agent-spec/2026-11-12-x', html: '/repo/agent-spec/2026-11-12-x/session-overview.html' };
+    const refreshed: number[] = [];
+    const files = {
+      answers: async () => null,
+      overview: async () => overview,
+      refreshOverview: async (list: readonly IterationRecapEntry[]) => (refreshed.push(list.length), overview),
+    } as unknown as RecapSessionFiles;
+    return { recap: new OpencodeSessionRecap(repos, files), resolved, refreshed, overview };
   };
 
   it('records history turns once, without repo lookups', async () => {
@@ -117,6 +123,17 @@ describe('OpencodeSessionRecap', () => {
 
     expect(resolved[0]).toMatchObject({ startRoot: '/repo', startState: 'before', changedDirectories: ['/repo'] });
     expect(recap.entries[0]?.artifacts.repos).toEqual(['repo']);
+  });
+
+  it('refreshes the overview page only when a turn finished, and keeps the slug folder either way', async () => {
+    const { recap, refreshed, overview } = fakes();
+
+    await recap.refreshFiles(false);
+    expect(recap.overview).toEqual(overview);
+    expect(refreshed).toEqual([]);
+
+    await recap.refreshFiles(true);
+    expect(refreshed).toEqual([0]);
   });
 
   it('moves the cursor with /summarize words', async () => {

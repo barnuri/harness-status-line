@@ -8,7 +8,7 @@ export class OpencodeRecapHost implements RecapHost {
   constructor(
     private readonly sessionIdOf: () => string,
     private readonly directoryOf: () => string,
-    private readonly env: Readonly<Record<string, string | undefined>> = process.env,
+    private readonly environment: Readonly<Record<string, string | undefined>> = process.env,
   ) {}
 
   async run(
@@ -48,11 +48,15 @@ export class OpencodeRecapHost implements RecapHost {
   }
 
   async home(): Promise<string | undefined> {
-    return this.env['HOME'];
+    return this.environment['HOME'];
   }
 
   async osType(): Promise<string | undefined> {
     return process.platform === 'darwin' ? 'darwin' : process.platform;
+  }
+
+  async isInsideHerdr(): Promise<boolean> {
+    return this.environment['HERDR_ENV'] === '1';
   }
 
   async now(): Promise<number> {

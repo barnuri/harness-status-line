@@ -8,13 +8,14 @@ import { OpencodeTurns } from './opencodeTurns.ts';
 import type { SummarizeContext } from './summarizeContext.ts';
 import type { OpencodeSessionMessage } from './types.ts';
 
-type RecapChange = (sessionId: string, recap: OpencodeSessionRecap, isTurnFinished: boolean) => void | Promise<void>;
+type RecapChange = (sessionId: string, recap: OpencodeSessionRecap, isTurnFinished: boolean, isInitial: boolean) => void | Promise<void>;
 
 /** The summarize recap of every opencode session, rebuilt from the session messages when a turn ends. */
 export class SessionRecaps {
   private static readonly TURN_END_EVENTS = ['session.execution.succeeded', 'session.execution.failed', 'session.execution.interrupted'] as const;
 
   private readonly recaps = new Map<string, OpencodeSessionRecap>();
+  private readonly initialLoads = new Map<string, Promise<void>>();
   private readonly branchPullRequests = new Map<string, IterationRecapLink>();
 
   constructor(
@@ -36,6 +37,13 @@ export class SessionRecaps {
     };
   }
 
+  /** The session's recap once its history has loaded, so a command never reads the empty state of a resumed session. */
+  async ready(sessionId: string): Promise<OpencodeSessionRecap> {
+    const recap = this.recapOf(sessionId);
+    await this.initialLoads.get(sessionId);
+    return recap;
+  }
+
   /** The session's recap; the first call loads the turns the session already has. */
   recapOf(sessionId: string): OpencodeSessionRecap {
     const known = this.recaps.get(sessionId);
@@ -47,7 +55,7 @@ export class SessionRecaps {
     const repos = new RecapRepos(host, errors, this.branchPullRequests, this.directory());
     const recap = new OpencodeSessionRecap(repos, new RecapSessionFiles(host, repos, errors));
     this.recaps.set(sessionId, recap);
-    void this.load(sessionId, recap, false);
+    this.initialLoads.set(sessionId, this.load(sessionId, recap, false, true));
     return recap;
   }
 
@@ -60,16 +68,19 @@ export class SessionRecaps {
     await this.recapOf(sessionId).noteTurnStart().catch((error: unknown) => this.logError(sessionId, error));
   }
 
-  private async load(sessionId: string, recap: OpencodeSessionRecap, isTurnFinished: boolean): Promise<void> {
+  private async load(sessionId: string, recap: OpencodeSessionRecap, isTurnFinished: boolean, isInitial = false): Promise<void> {
     try {
       await this.data.session.message.sync(sessionId);
       const messages = this.data.session.message.list(sessionId) as ReadonlyArray<OpencodeSessionMessage>;
       const isRunning = !isTurnFinished && this.data.session.status(sessionId) === 'running';
       await recap.record(OpencodeTurns.split(messages, isRunning), Date.now());
+      if (recap.entries.length === 0 && messages.length > 0) {
+        await this.logError(sessionId, new Error(`no iterations from ${messages.length} messages (types: ${[...new Set(messages.map((message) => message.type))].join(', ')})`));
+      }
       await recap.refreshFiles(isTurnFinished);
     } catch (error) {
       await this.logError(sessionId, error);
     }
-    await this.onChange(sessionId, recap, isTurnFinished);
+    await this.onChange(sessionId, recap, isTurnFinished, isInitial);
   }
 }

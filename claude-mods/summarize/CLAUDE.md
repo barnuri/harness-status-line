@@ -18,7 +18,13 @@ Deterministic iteration recap pane for Claude Code. It makes no model calls, eve
   session's `agent-spec/<slug>/` folder (`OverviewFacts`, no model call). `/summarize overview`
   writes it, runs `~/.agents/skills/session-overview/scripts/render_overview.py <folder>`, and opens
   `session-overview.html`. The page reads the facts plus `tasks.md`, `plan.md` and `overview.md`.
-  The `overview` action in the Answers section opens the same page.
+  The slug folder is the one session-slug published, else the `agent-spec/<slug>/` folder of a file
+  the session wrote. Every turn end also renders the page. The `slug` row in "This session" always
+  shows: the slug and a `session overview` action (`o`), or `none`. Inside herdr the action opens
+  the page in a `terminal-browser` split below the pane, else the OS opener. The herdr-mods pane
+  (`opencode-summarize/view.ts`) instead hands its own terminal to `terminal-browser` through
+  `ui.takeover`. The `overviewBack.js` preload adds a "◀ Back" button, and Esc also quits, so the
+  recap draws again. If that fails, the pane falls back to the split.
 - **Skills can be missed.** The host may skip this mod's `skill.prompt` hook when another plugin
   ahead of it does not pass the event on. `Skill` tool calls and typed slash commands still count,
   so a skill loaded only through that hook can be absent from the Skills list.

@@ -8,6 +8,7 @@ import type {
   IterationRecapLink,
   IterationRecapScope,
   SessionAnswers,
+  SessionOverview,
 } from '../../../claude-mods/summarize/types';
 import type { OpencodeTurn } from './types.ts';
 
@@ -19,6 +20,7 @@ export class OpencodeSessionRecap {
 
   entries: IterationRecapEntry[] = [];
   answers: SessionAnswers | null = null;
+  overview: SessionOverview | null = null;
   sessionHead: IterationRecapLink | null = null;
   cursor: number | null = null;
 
@@ -61,12 +63,9 @@ export class OpencodeSessionRecap {
   async refreshFiles(isTurnFinished: boolean): Promise<void> {
     const root = await this.repos.root(this.repos.sessionDirectory);
     this.sessionHead = root === null ? null : await this.repos.headCommit(root);
-    if (isTurnFinished) {
-      const folder = await this.files.publishedSlugFolder(this.entries);
-      if (folder !== null) {
-        await this.files.writeOverviewFacts(folder, this.entries, this.sessionHead);
-      }
-    }
+    this.overview = isTurnFinished
+      ? await this.files.refreshOverview(this.entries, this.sessionHead)
+      : await this.files.overview(this.entries);
     const answers = await this.files.answers(this.entries);
     if (answers !== null) {
       this.answers = answers;

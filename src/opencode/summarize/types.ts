@@ -3,6 +3,7 @@ import type {
   IterationRecapLink,
   IterationRecapToolCall,
   SessionAnswers,
+  SessionOverview,
 } from '../../../claude-mods/summarize/types';
 import type { OpencodeToolPart } from './opencodeToolCall.ts';
 
@@ -38,5 +39,6 @@ export interface SummarizePaneState {
   readonly showFilePaths: boolean;
   readonly entries: readonly IterationRecapEntry[];
   readonly answers: SessionAnswers | null;
+  readonly overview: SessionOverview | null;
   readonly sessionHead: IterationRecapLink | null;
 }
