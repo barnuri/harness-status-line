@@ -231,9 +231,10 @@ export class StatusParser {
       return { icon: '🔑 ', label: 'auth', value: display, fg: colors.authApi.fg, bg: colors.authApi.bg };
     }
 
-    const baseUrl = process.env['ANTHROPIC_BASE_URL'];
+    // opencode on llm-hub carries the gateway only in the payload (api.base_url), not in the environment.
+    const baseUrl = process.env['ANTHROPIC_BASE_URL'] || this.payloadGatewayUrl(status);
     if (baseUrl) {
-      const hostname = serverName ?? this.extractHostname(baseUrl);
+      const hostname = serverName ?? this.authDisplayName(baseUrl, status);
       return { icon: '🌐 ', label: 'auth', value: hostname, fg: colors.authApi.fg, bg: colors.authApi.bg };
     }
 
@@ -254,6 +255,31 @@ export class StatusParser {
     const plan = status.api?.plan;
     const value = plan ? (plan.charAt(0).toUpperCase() + plan.slice(1)) : 'Sub';
     return { icon: '✨ ', label: 'auth', value, fg: colors.authSubscription.fg, bg: colors.authSubscription.bg };
+  }
+
+  // A gateway URL from the payload itself; Anthropic's own API is the subscription, not a gateway.
+  private payloadGatewayUrl(status: StatusJSON): string | undefined {
+    const baseUrl = status.api?.base_url;
+    if (!baseUrl) {
+      return undefined;
+    }
+    try {
+      return /(^|\.)anthropic\.com$/.test(new URL(baseUrl).hostname) ? undefined : baseUrl;
+    } catch {
+      return undefined;
+    }
+  }
+
+
+  private authDisplayName(baseUrl: string, status: StatusJSON): string {
+    if (this.isOpencodeHubStatus(status)) {
+      return 'llm-hub';
+    }
+    return this.extractHostname(baseUrl);
+  }
+
+  private isOpencodeHubStatus(status: StatusJSON): boolean {
+    return this.payloadClassifier.hubModelId(status) !== null;
   }
 
   private isCursorPayload(status: StatusJSON): boolean {

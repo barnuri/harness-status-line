@@ -9,7 +9,7 @@ export class OpencodeStateReader {
     const sessionId = slotSessionId ?? this.routeSessionId(api);
     const messages = this.sessionMessages(api, sessionId);
     const message = this.latestAssistantMessage(messages);
-    const modelRef = message?.model ?? this.selectedModel(api);
+    const modelRef = this.selectedModel(api) ?? message?.model;
     const model = this.lookupModel(api, modelRef);
     const directory = this.call(() => api.data?.location?.default?.()?.directory);
     const contextTokens = this.contextTokens(message);

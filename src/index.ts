@@ -11,6 +11,8 @@ import { ClaudeUsageClient } from './shared/claudeUsageClient.ts';
 import { ClaudeUsageRefresher } from './shared/claudeUsageRefresher.ts';
 import { SpendLedger } from './shared/spendLedger.ts';
 import { PayloadEnricher } from './shared/payloadEnricher.ts';
+import { PayloadClassifier } from './shared/payloadClassifier.ts';
+import { UsageSnapshotWriter } from './shared/usageSnapshotWriter.ts';
 import { TerminalWidthReader } from './shared/terminalWidthReader.ts';
 
 class Application {
@@ -52,6 +54,9 @@ class Application {
     const parser = new StatusParser();
     const parsed = parser.parse(raw);
     const status = await new PayloadEnricher().apply(parsed);
+    if (new PayloadClassifier().classify(status) === 'claude') {
+      new UsageSnapshotWriter().write(status);
+    }
     const segments = parser.buildSegments(status, config);
 
     const payloadWidth = status.render_width_chars;

@@ -67,7 +67,8 @@ describe('OpencodeStateReader.read()', () => {
 
   describe('session', () => {
     it('reads the latest assistant message of the slot session', () => {
-      const input = reader.read(api(), 'ses-1');
+      const selected = { ui: { ...api().ui, model: { current: () => ({ providerID: 'anthropic', modelID: 'claude-opus-5' }) } } };
+      const input = reader.read(api(undefined, selected as Partial<OpencodeTuiSlice>), 'ses-1');
 
       expect(input).toEqual({
         directory: '/repo/project',
@@ -86,10 +87,11 @@ describe('OpencodeStateReader.read()', () => {
       expect(reader.read(api()).sessionId).toBe('ses-route');
     });
 
-    it('skips non-assistant messages', () => {
-      const messages = [assistant(), { type: 'user' }, { type: 'model-switched' }];
+    it('shows the prompt-selected model after /model, before the next reply', () => {
+      const input = reader.read(api([assistant()]), 'ses-1');
 
-      expect(reader.read(api(messages), 'ses-1').modelId).toBe('claude-opus-5');
+      expect(input.modelId).toBe('hub/smart-auto-balance');
+      expect(input.providerId).toBe('llm-hub');
     });
   });
 

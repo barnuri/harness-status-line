@@ -26,14 +26,15 @@ export class OpencodeHubEnricher {
     return input.providerId === OpencodeHubEnricher.PROVIDER_ID && typeof input.modelId === 'string';
   }
 
-  async apply(input: OpencodeStatusInput, status: StatusJSON): Promise<StatusJSON> {
+  // The hub-shaped payload without any network call, so the first render already shows the hub, not the Anthropic login.
+  shape(input: OpencodeStatusInput, status: StatusJSON): StatusJSON {
     if (!this.applies(input)) {
       return status;
     }
     // Claude's snapshot describes the Anthropic login, not the hub session. opencode prices a Smart Auto
     // turn at $0 because the requested model has no fixed price, so a zero session cost is dropped.
     const { rate_limits: _claudeRateLimits, cost, ...rest } = status;
-    const hubStatus: StatusJSON = {
+    return {
       ...rest,
       model: { id: input.modelId, display_name: input.model ?? input.modelId },
       api: { base_url: this.hubUrl },
@@ -42,6 +43,12 @@ export class OpencodeHubEnricher {
         ? { context_window: { ...status.context_window, current_context_tokens: input.contextTokens } }
         : {}),
     };
-    return this.enricher.apply(hubStatus);
+  }
+
+  async apply(input: OpencodeStatusInput, status: StatusJSON): Promise<StatusJSON> {
+    if (!this.applies(input)) {
+      return status;
+    }
+    return this.enricher.apply(this.shape(input, status));
   }
 }

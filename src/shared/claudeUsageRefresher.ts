@@ -28,7 +28,9 @@ export class ClaudeUsageRefresher {
 
   private spawnDetached(): void {
     const entryPoint = path.join(import.meta.dir, '..', 'index.ts');
-    const child = Bun.spawn([process.execPath, entryPoint, ClaudeUsageRefresher.COMMAND_FLAG], {
+    // Inside the opencode TUI process.execPath is the opencode binary, which would parse the script as its own CLI args.
+    const runtime = /(^|\/)bun(-[\w.]+)?$/.test(process.execPath) ? process.execPath : (Bun.which('bun') ?? 'bun');
+    const child = Bun.spawn([runtime, entryPoint, ClaudeUsageRefresher.COMMAND_FLAG], {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
     });

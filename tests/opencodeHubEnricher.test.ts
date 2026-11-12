@@ -82,3 +82,14 @@ describe('OpencodeHubEnricher', () => {
     expect(fake.seen[0]?.api?.base_url).toBe('http://localhost:8888');
   });
 });
+
+describe('OpencodeHubEnricher.shape', () => {
+  it('drops the Anthropic login and points the auth at the hub without a network call', () => {
+    const enricher = new OpencodeHubEnricher({ LLM_HUB_URL: 'http://127.0.0.1:9999' }, recordingEnricher());
+
+    const shaped = enricher.shape(HUB_INPUT, BASE_STATUS);
+
+    expect(shaped.rate_limits).toBeUndefined();
+    expect(shaped.api).toEqual({ base_url: 'http://127.0.0.1:9999' });
+  });
+});
