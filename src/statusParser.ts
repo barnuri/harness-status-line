@@ -7,6 +7,8 @@ import { CopilotEffortReader } from './shared/copilotEffortReader.ts';
 import { PayloadClassifier } from './shared/payloadClassifier.ts';
 import { SessionActivityReader } from './shared/sessionActivityReader.ts';
 import { ActivitySegment } from './shared/activitySegment.ts';
+import { BackgroundTaskReader } from './shared/backgroundTaskReader.ts';
+import { BackgroundTaskSegment } from './shared/backgroundTaskSegment.ts';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -59,6 +61,8 @@ export class StatusParser {
   private readonly copilotEffortReader: CopilotEffortReader;
   private readonly activityReader: SessionActivityReader;
   private readonly activitySegment = new ActivitySegment();
+  private readonly backgroundReader = new BackgroundTaskReader();
+  private readonly backgroundSegment = new BackgroundTaskSegment();
   private readonly payloadClassifier = new PayloadClassifier();
   private readonly quotaAmountFormat = new Intl.NumberFormat(StatusParser.QUOTA_LOCALE, { maximumFractionDigits: 0 });
 
@@ -162,6 +166,14 @@ export class StatusParser {
       const authSeg = this.buildAuthSegment(status, colors);
       if (authSeg) {
         segments.push(authSeg);
+      }
+    }
+
+    if (visibility.background) {
+      const counts = this.backgroundReader.read(this.resolveSessionId(status), status.transcript_path);
+      const background = this.backgroundSegment.build(counts, colors);
+      if (background) {
+        segments.push(background);
       }
     }
 

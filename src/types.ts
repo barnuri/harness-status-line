@@ -299,6 +299,7 @@ export interface SegmentVisibility {
   readonly yolo: boolean;
   readonly lines: boolean;
   readonly activity: boolean;
+  readonly background: boolean;
 }
 
 export interface SegmentColorMap {
@@ -327,6 +328,7 @@ export interface SegmentColorMap {
   readonly activityIdle: SegmentColorConfig;
   readonly activityError: SegmentColorConfig;
   readonly activityStopped: SegmentColorConfig;
+  readonly background: SegmentColorConfig;
 }
 
 export interface Config {

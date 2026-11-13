@@ -30,6 +30,7 @@ export class ConfigManager {
       yolo: true,
       lines: false,
       activity: true,
+      background: true,
     },
     colors: {
       folder:           { bg: [30, 41, 59],   fg: [248, 250, 252] },
@@ -57,6 +58,7 @@ export class ConfigManager {
       activityIdle:     { bg: [22, 101, 52],  fg: [248, 250, 252] },
       activityError:    { bg: [185, 28, 28],  fg: [248, 250, 252] },
       activityStopped:  { bg: [82, 82, 91],   fg: [248, 250, 252] },
+      background:       { bg: [67, 56, 202],  fg: [248, 250, 252] },
     },
   };
 

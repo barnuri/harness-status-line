@@ -71,6 +71,7 @@ Keys:
   segments.yolo               true | false
   segments.lines              true | false
   segments.activity           true | false (first segment: spinner while running, icon per other state)
+  segments.background         true | false (background agents, monitors and commands of the session)
   refreshInterval             <milliseconds>
   workDays                    comma-separated weekdays, 0=Sun .. 6=Sat (default 0,1,2,3,4)
   showAic                     true | false (Copilot quota: show the AIC count before the dollars)
@@ -79,7 +80,7 @@ Keys:
 Segments: folder, git, ghx, slug, model, ctxHealthy, ctxWarning, ctxCritical,
           authSubscription, authApi, rateHealthy, rateWarning, rateCritical,
           effort, workflow, vim, worktree, autorun, yolo, lines,
-          activityRunning, activityWaiting, activityIdle, activityError, activityStopped
+          activityRunning, activityWaiting, activityIdle, activityError, activityStopped, background
 
 Examples:
   config set separatorStyle spaces
