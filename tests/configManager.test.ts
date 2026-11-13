@@ -55,6 +55,7 @@ describe('ConfigManager — DEFAULT_CONFIG', () => {
       'folder', 'git', 'model', 'ctxHealthy', 'ctxWarning', 'ctxCritical',
       'authSubscription', 'authApi', 'rateHealthy', 'rateWarning', 'rateCritical',
       'slug', 'effort', 'workflow', 'vim', 'worktree', 'autorun', 'yolo', 'lines',
+      'activityRunning', 'activityWaiting', 'activityIdle', 'activityError', 'activityStopped',
     ]) {
       const c = colors[key as keyof typeof colors];
       expect(c.bg).toHaveLength(3);

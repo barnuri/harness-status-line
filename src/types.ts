@@ -171,7 +171,12 @@ export interface LlmHubDecisionLookup {
   readonly decision: LlmHubAuto | null;
 }
 
+/** What the agent session is doing now. The activity segment shows a spinner or an icon for it. */
+export type ActivityState = 'running' | 'compacting' | 'permission' | 'question' | 'idle' | 'error' | 'interrupted';
+
 export interface StatusJSON {
+  // Set by a harness adapter that knows the live state. Claude Code has none, so the parser reads the hook state file.
+  readonly activity?: ActivityState;
   readonly cwd?: string;
   readonly model?: string | ModelInfo;
   readonly context_window?: ContextWindow;
@@ -293,6 +298,7 @@ export interface SegmentVisibility {
   readonly autorun: boolean;
   readonly yolo: boolean;
   readonly lines: boolean;
+  readonly activity: boolean;
 }
 
 export interface SegmentColorMap {
@@ -316,6 +322,11 @@ export interface SegmentColorMap {
   readonly autorun: SegmentColorConfig;
   readonly yolo: SegmentColorConfig;
   readonly lines: SegmentColorConfig;
+  readonly activityRunning: SegmentColorConfig;
+  readonly activityWaiting: SegmentColorConfig;
+  readonly activityIdle: SegmentColorConfig;
+  readonly activityError: SegmentColorConfig;
+  readonly activityStopped: SegmentColorConfig;
 }
 
 export interface Config {

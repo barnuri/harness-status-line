@@ -5,7 +5,10 @@ import { jsx } from '@opentui/solid/jsx-runtime';
 import type { JSX } from '@opentui/solid/jsx-runtime';
 import { OpencodeStateReader } from './opencodeStateReader.ts';
 import { OpencodeStatusRenderer } from './opencodeStatusRenderer.ts';
-import type { Segment } from '../types.ts';
+import { OpencodeActivityTracker } from './activityTracker.ts';
+import { ActivitySegment } from '../shared/activitySegment.ts';
+import { ConfigManager } from '../configManager.ts';
+import type { ActivityState, Config, Segment } from '../types.ts';
 import type { OpencodeTuiSlice } from './types.ts';
 
 interface SlotClaim {
@@ -41,6 +44,9 @@ class OpencodeStatusLinePlugin {
 
   private readonly stateReader = new OpencodeStateReader();
   private readonly renderer = new OpencodeStatusRenderer();
+  private readonly activitySegment = new ActivitySegment();
+  private readonly activityTracker: OpencodeActivityTracker;
+  private readonly config: Config = new ConfigManager().load();
   private readonly revision: RevisionStore;
 
   private segments: Segment[] = [];
@@ -50,11 +56,29 @@ class OpencodeStatusLinePlugin {
   private running = false;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private activityTimer: ReturnType<typeof setInterval> | undefined;
+  private stopActivityListen: (() => void) | undefined;
+  private shownActivity: ActivityState | null = null;
 
   // The host's store is the reactive source: a signal from this repo's own solid-js copy is not tracked by the host.
   constructor(private readonly context: PluginContext) {
     this.revision = context.storage.memory('harness-status-line', { initial: { revision: 0 } });
     this.segments = this.readCache();
+    this.activityTracker = new OpencodeActivityTracker(context);
+    this.stopActivityListen = this.activityTracker.start();
+    // Redraws each spinner frame while the session works, and once on every state change otherwise.
+    this.activityTimer = setInterval(() => {
+      try {
+        const activity = this.activityTracker.current(this.activityTracker.routeSessionId());
+        const changed = activity !== this.shownActivity;
+        this.shownActivity = activity;
+        if (changed || (activity && ActivitySegment.isAnimated(activity))) {
+          this.bumpRevision();
+        }
+      } catch {
+        /* the spinner must never break the TUI */
+      }
+    }, ActivitySegment.FRAME_MS);
     // Poll the selected model so changes invoked by commands such as `/model` are detected
     // even when the host does not re-render the slot immediately. Lightweight: checks every 300ms.
     this.pollTimer = setInterval(() => {
@@ -102,17 +126,28 @@ class OpencodeStatusLinePlugin {
       if (this.pollTimer) {
         clearInterval(this.pollTimer);
       }
+      clearInterval(this.activityTimer);
+      this.stopActivityListen?.();
       releases.forEach((release) => release());
     };
   }
 
   private renderSafely(sessionId: string | undefined): JSX.Element | null {
     try {
-      return this.renderer.render(this.currentSegments(sessionId));
+      return this.renderer.render([...this.activitySegments(sessionId), ...this.currentSegments(sessionId)]);
     } catch (err) {
       this.logFailure(err);
       return null;
     }
+  }
+
+  // Computed in this process, not in segmentsCli, so the spinner advances every frame instead of every rebuild.
+  private activitySegments(sessionId: string | undefined): Segment[] {
+    const activity = this.activityTracker.current(sessionId ?? this.activityTracker.routeSessionId());
+    if (!activity || !this.config.segments.activity) {
+      return [];
+    }
+    return [this.activitySegment.build(activity, this.config.colors)];
   }
 
   // Reads the reactive opencode state on every call, so the line follows new messages and model switches.

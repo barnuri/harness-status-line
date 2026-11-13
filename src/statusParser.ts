@@ -5,6 +5,8 @@ import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
 import { CursorAutoModelReader } from './shared/cursorAutoModelReader.ts';
 import { CopilotEffortReader } from './shared/copilotEffortReader.ts';
 import { PayloadClassifier } from './shared/payloadClassifier.ts';
+import { SessionActivityReader } from './shared/sessionActivityReader.ts';
+import { ActivitySegment } from './shared/activitySegment.ts';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -55,12 +57,15 @@ export class StatusParser {
 
   private readonly autoModelReader: CursorAutoModelReader;
   private readonly copilotEffortReader: CopilotEffortReader;
+  private readonly activityReader: SessionActivityReader;
+  private readonly activitySegment = new ActivitySegment();
   private readonly payloadClassifier = new PayloadClassifier();
   private readonly quotaAmountFormat = new Intl.NumberFormat(StatusParser.QUOTA_LOCALE, { maximumFractionDigits: 0 });
 
-  constructor(autoModelReader?: CursorAutoModelReader, copilotEffortReader?: CopilotEffortReader) {
+  constructor(autoModelReader?: CursorAutoModelReader, copilotEffortReader?: CopilotEffortReader, activityReader?: SessionActivityReader) {
     this.autoModelReader = autoModelReader ?? new CursorAutoModelReader();
     this.copilotEffortReader = copilotEffortReader ?? new CopilotEffortReader();
+    this.activityReader = activityReader ?? new SessionActivityReader();
   }
 
 
@@ -78,6 +83,13 @@ export class StatusParser {
   buildSegments(status: StatusJSON, config: Config): Segment[] {
     const segments: Segment[] = [];
     const { colors, segments: visibility, workDays, showAic } = config;
+
+    if (visibility.activity) {
+      const activity = status.activity ?? this.activityReader.read(this.resolveSessionId(status), status.transcript_path);
+      if (activity) {
+        segments.push(this.activitySegment.build(activity, colors));
+      }
+    }
 
     if (visibility.folder) {
       const folder = this.extractFolder(status);

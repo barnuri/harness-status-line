@@ -15,6 +15,7 @@ export interface OpencodeModelRef {
 
 export interface OpencodeMessage {
   readonly type?: string;
+  readonly status?: string;
   readonly model?: OpencodeModelRef;
   readonly tokens?: OpencodeTokenUsage;
   readonly cost?: number;
@@ -29,6 +30,14 @@ export interface OpencodeModel {
   };
 }
 
+/** One opencode 2 data-bus event, as `api.data.listen` delivers it. */
+export interface OpencodeDataEvent {
+  readonly details?: {
+    readonly type?: string;
+    readonly data?: { readonly sessionID?: string } | null;
+  };
+}
+
 /** The narrow slice of opencode 2's TUI plugin `Context` this status line reads. */
 export interface OpencodeTuiSlice {
   readonly app?: {
@@ -40,6 +49,11 @@ export interface OpencodeTuiSlice {
       readonly message?: {
         readonly list?: (sessionID: string) => ReadonlyArray<OpencodeMessage>;
       };
+      // "running" while a turn executes.
+      readonly status?: (sessionID: string) => string | undefined;
+      readonly family?: (sessionID: string) => ReadonlyArray<string> | undefined;
+      readonly permission?: { readonly list?: (sessionID: string) => ReadonlyArray<unknown> | undefined };
+      readonly form?: { readonly list?: (sessionID: string) => ReadonlyArray<unknown> | undefined };
     };
     readonly location?: {
       readonly default?: () => { readonly directory?: string } | undefined;
@@ -47,6 +61,7 @@ export interface OpencodeTuiSlice {
         readonly list?: () => ReadonlyArray<OpencodeModel> | undefined;
       };
     };
+    readonly listen?: (handler: (event: OpencodeDataEvent) => void) => () => void;
   };
   readonly ui?: {
     readonly router?: {

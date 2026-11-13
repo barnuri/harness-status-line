@@ -29,6 +29,7 @@ export class ConfigManager {
       autorun: true,
       yolo: true,
       lines: false,
+      activity: true,
     },
     colors: {
       folder:           { bg: [30, 41, 59],   fg: [248, 250, 252] },
@@ -51,6 +52,11 @@ export class ConfigManager {
       autorun:          { bg: [190, 24, 93],  fg: [248, 250, 252] },
       yolo:             { bg: [185, 28, 28],  fg: [248, 250, 252] },
       lines:            { bg: [63, 63, 70],   fg: [248, 250, 252] },
+      activityRunning:  { bg: [37, 99, 235],  fg: [248, 250, 252] },
+      activityWaiting:  { bg: [202, 138, 4],  fg: [15, 23, 42]    },
+      activityIdle:     { bg: [22, 101, 52],  fg: [248, 250, 252] },
+      activityError:    { bg: [185, 28, 28],  fg: [248, 250, 252] },
+      activityStopped:  { bg: [82, 82, 91],   fg: [248, 250, 252] },
     },
   };
 
