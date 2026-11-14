@@ -97,7 +97,9 @@ export class RecapSessionFiles {
         }
       }
 
-      return null
+      // A published slug whose folder was never created still names the session: the folder goes in
+      // the session repo, and the turn-end refresh creates it with the facts and the overview page.
+      return roots.length > 0 ? `${roots[0]}/agent-spec/${slug}` : null
     } catch (error) {
       void this.errors.log(`published slug lookup failed: ${RecapErrorLog.describe(error)}`)
 

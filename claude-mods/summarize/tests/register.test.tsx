@@ -384,6 +384,22 @@ test('the slug row shows none when the session has no slug folder', async ($, on
   await ui.unmount()
 })
 
+test('a published slug whose folder is missing still shows, and turn.complete creates the folder in the session repo', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const written: { path: string; text: string }[] = []
+  const present = ['/home/me/.claude/session-slugs/sess-1']
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', [], '/home/me', path => present.includes(path), written)
+  on('session.id', async () => ({ value: 'sess-1' }))
+  on('fs.read', async () => ({ value: '2026-11-08-x\n' }))
+
+  await runIteration($, 't1', 'fix the login redirect', 'Fixed it.')
+  await clock.advance(10)
+
+  expect(written.map(file => file.path)).toContain('/work/web/agent-spec/2026-11-08-x/overview-facts.json')
+  const answer = await $.command.run(SUMMARIZE)
+  expect(answer.text).toContain('slug      2026-11-08-x')
+})
+
 test('turn.complete writes overview-facts.json into the published slug folder', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   const written: { path: string; text: string }[] = []
