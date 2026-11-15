@@ -1,8 +1,9 @@
 import { RecapErrorLog } from './recapErrorLog'
 
 import type { RecapHost } from './recapHost'
+import type { ViewerRoute } from './viewerRoute'
 
-/** Opens files with the OS opener, and the session overview page in a terminal-browser split inside herdr. */
+/** Opens files and links with the OS opener. Inside herdr, the terminal-browser split opens only for a focused phone viewer. */
 export class FileOpener {
   private static readonly OPEN_TIMEOUT_MS = 3000
   private static readonly BROWSER_TIMEOUT_MS = 20000
@@ -12,6 +13,7 @@ export class FileOpener {
   public constructor(
     private readonly host: Pick<RecapHost, 'run' | 'isInsideHerdr' | 'osType'>,
     private readonly errors: RecapErrorLog,
+    private readonly route: Pick<ViewerRoute, 'isMobilePanelFocused'> | null = null,
   ) {}
 
   /** Opens a file with the OS default app (`open` on macOS, `xdg-open` elsewhere). */
@@ -24,12 +26,20 @@ export class FileOpener {
     }
   }
 
-  /** Inside herdr, opens the page in a terminal-browser split below the pane; elsewhere, or when that fails, with the OS opener. */
+  /** Opens the overview page in the terminal-browser split only for a focused phone viewer in herdr; else with the OS opener. */
   public async openOverview(html: string): Promise<void> {
-    if ((await this.host.isInsideHerdr()) && (await this.openInTerminalBrowser(html))) {
+    if ((await this.host.isInsideHerdr()) && (await this.route?.isMobilePanelFocused()) && (await this.openInTerminalBrowser(html))) {
       return
     }
     await this.openFile(html)
+  }
+
+  /** Opens a link: in the herdr terminal-browser split when a phone viewer is attached and this pane is focused; else, or when that fails, with the OS opener. */
+  public async openLink(url: string): Promise<void> {
+    if ((await this.host.isInsideHerdr()) && (await this.route?.isMobilePanelFocused()) && (await this.openInTerminalBrowser(url))) {
+      return
+    }
+    await this.openFile(url)
   }
 
   private async openInTerminalBrowser(html: string): Promise<boolean> {

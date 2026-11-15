@@ -1,5 +1,7 @@
 import { FileOpener } from './fileOpener'
+import type { ViewerRoute } from './viewerRoute'
 import { OverviewFacts } from './overviewFacts'
+import { OverviewBoard } from './overviewBoard'
 import { OverviewReader } from './overviewReader'
 import { RecapErrorLog } from './recapErrorLog'
 
@@ -24,8 +26,9 @@ export class RecapSessionFiles {
     private readonly host: RecapHost,
     private readonly repos: RecapRepos,
     private readonly errors: RecapErrorLog,
+    route: Pick<ViewerRoute, 'isMobilePanelFocused'> | null = null,
   ) {
-    this.opener = new FileOpener(host, errors)
+    this.opener = new FileOpener(host, errors, route)
   }
 
   /**
@@ -39,6 +42,32 @@ export class RecapSessionFiles {
     }
 
     return { slug: folder.slice(folder.lastIndexOf('/') + 1), folder, html: `${folder}/${RecapSessionFiles.OVERVIEW_HTML_FILE}` }
+  }
+
+  /**
+   * At a turn end: appends the user's question and the session's answer to `<folder>/overview.md` as one
+   * card. Skips the write when a card for the same question exists. Logs and returns on failure.
+   */
+  public async recordExchange(folder: string, prompt: string, answer: string): Promise<void> {
+    try {
+      if (!(await this.host.exists(folder))) {
+        return
+      }
+      const path = `${folder}/${OverviewReader.FILE_NAME}`
+      const question = OverviewBoard.questionLine(prompt)
+      const text = (await this.host.exists(path)) ? await this.host.read(path) : ''
+      const isExisting = text.trim() !== ''
+      if (OverviewBoard.hasQuestion(text, question)) {
+        return
+      }
+      const card = OverviewBoard.card(OverviewBoard.nextNumber(text), question, OverviewBoard.answerSummary(answer))
+      const next = isExisting
+        ? `${text.trimEnd()}\n\n---\n\n${text.includes(OverviewBoard.HEADER) ? '' : `${OverviewBoard.HEADER}\n\n`}${card}`
+        : `> Session: ${folder.slice(folder.lastIndexOf('/') + 1)}\n\n${OverviewBoard.HEADER}\n\n${card}`
+      await this.host.write(path, next)
+    } catch (error) {
+      void this.errors.log(`exchange write failed for ${folder}: ${RecapErrorLog.describe(error)}`)
+    }
   }
 
   /** At a turn end: writes `overview-facts.json` and renders `session-overview.html` in the slug folder. */
@@ -162,6 +191,11 @@ export class RecapSessionFiles {
   /** Opens a file with the OS default app. */
   public async openFile(path: string): Promise<void> {
     await this.opener.openFile(path)
+  }
+
+  /** Opens an http(s) link in the herdr pane when a phone viewer is attached, else with the OS opener. */
+  public async openLink(url: string): Promise<void> {
+    await this.opener.openLink(url)
   }
 
   /** Opens the overview page, in a terminal-browser split when inside herdr. */

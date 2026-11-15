@@ -24,7 +24,6 @@ export class RecapView {
     plans: 'blueBright',
     commits: 'green',
     asked: 'green',
-    open: 'yellow',
     prompt: 'gray',
   } as const
   private static readonly TOKENS_PER_K = 1000
@@ -77,7 +76,6 @@ export class RecapView {
     handlers: IterationRecapHandlers,
   ): RenderElement {
     const { Box, Text, Button } = elements
-    const openQuestions = RecapText.openQuestions(latest).length
 
     return (
       <Box flexDirection="row">
@@ -86,7 +84,6 @@ export class RecapView {
             <Text bold color={RecapView.COLORS.accent}>↻ #{latest.index}/{total}</Text>
             <Text dimColor> {RecapText.duration(latest.durationMs)} · </Text>
             <Text color={RecapView.COLORS.summary}>{latest.summary}</Text>
-            {openQuestions > 0 && <Text color={RecapView.COLORS.open}> · {openQuestions} open ?</Text>}
           </Text>
         </Box>
         <Box flexShrink={0} paddingRight={4}>
@@ -192,7 +189,6 @@ export class RecapView {
   private static details(elements: RecapViewElements, selected: IterationRecapEntry, cwd: string, layout: IterationRecapPaneLayout): RenderElement {
     const { Box } = elements
     const { artifacts } = selected
-    const answeredQuestions = artifacts.questions.filter(question => question.isAnswered).map(question => `✓ ${question.answer ?? question.text}`)
 
     return (
       <Box flexDirection="column">
@@ -201,8 +197,6 @@ export class RecapView {
         {RecapView.row(elements, 'reviews', artifacts.reviews, RecapView.COLORS.reviews)}
         {RecapView.row(elements, 'plans', artifacts.plans.map(plan => RecapText.relative(plan, cwd)), RecapView.COLORS.plans)}
         {RecapView.row(elements, 'commits', artifacts.commits, RecapView.COLORS.commits)}
-        {RecapView.row(elements, 'asked', answeredQuestions, RecapView.COLORS.asked)}
-        {RecapView.row(elements, 'open ?', RecapText.openQuestions(selected), RecapView.COLORS.open)}
       </Box>
     )
   }

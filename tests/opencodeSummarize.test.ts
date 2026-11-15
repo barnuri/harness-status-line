@@ -96,12 +96,14 @@ describe('OpencodeSessionRecap', () => {
     } as unknown as RecapRepos;
     const overview = { slug: '2026-11-12-x', folder: '/repo/agent-spec/2026-11-12-x', html: '/repo/agent-spec/2026-11-12-x/session-overview.html' };
     const refreshed: number[] = [];
+    const exchanges: { folder: string; prompt: string; answer: string }[] = [];
     const files = {
       answers: async () => null,
       overview: async () => overview,
       refreshOverview: async (list: readonly IterationRecapEntry[]) => (refreshed.push(list.length), overview),
+      recordExchange: async (folder: string, prompt: string, answer: string) => void exchanges.push({ folder, prompt, answer }),
     } as unknown as RecapSessionFiles;
-    return { recap: new OpencodeSessionRecap(repos, files), resolved, refreshed, overview };
+    return { recap: new OpencodeSessionRecap(repos, files), resolved, refreshed, overview, exchanges };
   };
 
   it('records history turns once, without repo lookups', async () => {
@@ -134,6 +136,18 @@ describe('OpencodeSessionRecap', () => {
 
     await recap.refreshFiles(true);
     expect(refreshed).toEqual([0]);
+  });
+
+  it('records a card for each finished turn whose prompt has a question', async () => {
+    const { recap, exchanges, overview } = fakes();
+    const turns = OpencodeTurns.split(
+      [user('m1', 'Which DB?', 0), assistant([writePart], 10), user('m2', 'Run the tests', 11), assistant([writePart], 20)],
+      false,
+    );
+
+    await recap.record(turns, 30);
+
+    expect(exchanges).toEqual([{ folder: overview.folder, prompt: 'Which DB?', answer: turns[0]?.answer ?? '' }]);
   });
 
   it('moves the cursor with /summarize words', async () => {

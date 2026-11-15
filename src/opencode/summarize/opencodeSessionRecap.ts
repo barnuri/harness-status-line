@@ -52,6 +52,7 @@ export class OpencodeSessionRecap {
       const start = turn.turnId === newestTurnId ? this.pendingStart : null;
       const resolved = start ? await this.repos.resolve(entry, this.scopeOf(turn, start)) : entry;
       this.entries = [...this.entries, resolved].slice(-OpencodeSessionRecap.MAX_ITERATIONS);
+      await this.recordQuestion(turn);
       isChanged = true;
     }
     if (isChanged) {
@@ -83,6 +84,17 @@ export class OpencodeSessionRecap {
 
   renderOverview(): Promise<string> {
     return this.files.renderOverview(this.entries, this.sessionHead);
+  }
+
+  /** Appends the turn's question and answer to the session's overview.md when the prompt has a `?`. Skips duplicates. */
+  private async recordQuestion(turn: OpencodeTurn): Promise<void> {
+    if (!turn.prompt.includes('?')) {
+      return;
+    }
+    const folder = await this.files.overview(this.entries);
+    if (folder !== null) {
+      await this.files.recordExchange(folder.folder, turn.prompt, turn.answer);
+    }
   }
 
   private entryOf(turn: OpencodeTurn, nowMs: number): IterationRecapEntry | null {

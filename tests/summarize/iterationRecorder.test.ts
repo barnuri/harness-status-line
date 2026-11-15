@@ -18,7 +18,6 @@ describe('IterationRecorder', () => {
       turnId: 't1',
       prompt: 'fix the login bug',
       summary: 'Fixed the redirect loop.',
-      isSummaryFromModel: false,
       startedAt: 1000,
       durationMs: 4200,
       outputTokens: 900,

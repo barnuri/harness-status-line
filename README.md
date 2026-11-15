@@ -104,13 +104,12 @@ The pane has two parts.
 | reviews | `/cr`, `/code-review`, `/review`, `/security-review` skills, review agents, `ReportFindings`, `gh pr review` |
 | plans | `ExitPlanMode`, `/code-gen` / `/arch-design` skills, Plan agents, `TaskCreate`, `plan.md` / `tasks.md` writes |
 | commits | The engine's `gitOperation.commit` sha on Bash results, else `git commit` output (`<hash> <subject>`) |
-| asked / open ? | `AskUserQuestion` answered or declined, and trailing `?` lines of the final answer |
 
 Recording runs from the start of the session, but nothing shows until you run `/summarize`. After that, the band and the pane follow every new iteration until the session ends.
 
 It shows up in two places:
 
-- **Band above the prompt**: the latest recap in one line (summary, open questions), with `summary` and `×` buttons.
+- **Band above the prompt**: the latest recap in one line (summary), with `summary` and `×` buttons.
 - **`/summarize` pane**: the full recap, with an icon footer pinned to the bottom: `p: ◀` previous, `n: ▶` next, `l: ⏭` latest, `h: ☰` history and `i: ✎` prompt. History and prompt are collapsed by default. Click an icon, or focus the pane (click it, or ctrl+x tab) and press its key. Mods can't bind keys that work from the prompt itself. After `/summarize`, it reopens after each new iteration. Close it (`✕` or ctrl+x x) and it stays closed until you run `/summarize` again. When it reopens by itself, Claude Code places the pane only on terminals at least 144 columns wide. Narrower terminals hold it until you run `/summarize`.
 
 | Command | Effect |

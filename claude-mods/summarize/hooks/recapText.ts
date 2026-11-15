@@ -41,7 +41,6 @@ export class RecapText {
       RecapText.textRow('reviews', artifacts.reviews),
       RecapText.textRow('plans', artifacts.plans.map(plan => RecapText.relative(plan, cwd))),
       RecapText.textRow('commits', artifacts.commits),
-      RecapText.textRow('open', RecapText.openQuestions(selected)),
     ]
 
     return lines.filter(line => line !== '').join('\n')
@@ -67,10 +66,6 @@ export class RecapText {
       .map(([tool, count]) => `${tool}×${count}`)
 
     return tools.length === 0 ? [] : [tools.join('  ')]
-  }
-
-  public static openQuestions(entry: IterationRecapEntry): string[] {
-    return entry.artifacts.questions.filter(question => !question.isAnswered).map(question => question.text)
   }
 
   public static alwaysTextRow(label: string, values: readonly string[]): string {

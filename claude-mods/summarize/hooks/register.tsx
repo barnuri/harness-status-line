@@ -9,6 +9,7 @@ import { RecapView } from './recapView'
 import { RecapErrorLog } from './recapErrorLog'
 import { RecapRepos } from './recapRepos'
 import { RecapSessionFiles } from './recapSessionFiles'
+import { ViewerRoute } from './viewerRoute'
 
 import type { RecapHost } from './recapHost'
 
@@ -88,9 +89,17 @@ function servicesFor($: EngineInterface): { repos: RecapRepos; files: RecapSessi
   const errors = new RecapErrorLog(host)
   const repos = new RecapRepos(host, errors, branchPullRequests, SESSION_DIRECTORY)
 
-  return { repos, files: new RecapSessionFiles(host, repos, errors) }
+  const env = async (name: string): Promise<string | undefined> => {
+    if (name === 'HERDR_PANE_ID') {
+      return $.env.get('HERDR_PANE_ID')
+    }
+    return $.env.get('HERDR_PLUGIN_STATE_DIR')
+  }
+
+  return { repos, files: new RecapSessionFiles(host, repos, errors, new ViewerRoute({ ...host, env })) }
 }
 
+const HTTP_LINK = /^https?:\/\//
 const HERDR_MODS_PLUGIN_ID = 'barnuri.mods'
 const HERDR_MODS_VIEW = '../../opencode-summarize/view.ts'
 const HERDR_STATE_DIRECTORY = '.cache/herdr-mods/summarize'
@@ -191,6 +200,10 @@ async function loadSessionHead($: EngineInterface): Promise<void> {
 }
 
 async function openFile($: EngineInterface, path: string): Promise<void> {
+  if (HTTP_LINK.test(path)) {
+    await servicesFor($).files.openLink(path)
+    return
+  }
   await servicesFor($).files.openFile(path)
 }
 
@@ -278,6 +291,12 @@ export const register: Register = (on, options) => {
     await update($, iterations, current => [...current, entry].slice(-MAX_ITERATIONS))
     const saved = await read($, iterations)
     await loadSessionHead($)
+    if (entry.prompt.includes('?')) {
+      const folder = await files.overview(saved)
+      if (folder !== null) {
+        await files.recordExchange(folder.folder, entry.prompt, e.answer)
+      }
+    }
     const refreshed = await files.refreshOverview(saved, await read($, sessionHead))
     await update($, overview, () => refreshed)
     await loadAnswers($)

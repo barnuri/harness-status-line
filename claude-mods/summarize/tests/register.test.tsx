@@ -126,7 +126,7 @@ test('records an iteration with its artifacts and a deterministic summary', asyn
     expect((await ui.find({ type: 'Text', text: /Iteration 1\/1/ }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: 'Fixed it and opened the PR.' }))).toBeDefined()
     expect((await ui.find({ type: 'Text', text: '1 file' }))).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: 'Want me to merge it?' }))).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: /open \?/ }))).toBeUndefined()
     expect((await ui.find({ type: 'Text', text: 'This session' }))).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '+ #42' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'web' })).toBeDefined()
@@ -184,10 +184,11 @@ test('band shows the latest recap and hides on press', { options: { showBand: tr
   await $.command.run(SUMMARIZE)
 
   const ui = await $.ui.mount({ plugin: 'summarize', surface: 'terminal', ...BAND })
-  expect(await ui.find({ type: 'Text', text: /1 open \?/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /↻ #1\/1/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /open \?/ })).toBeUndefined()
 
   await ui.press({ key: 'hide' })
-  expect(await ui.find({ type: 'Text', text: /1 open \?/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /↻ #1\/1/ })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -530,4 +531,45 @@ test('last keeps one newest commit per repo, session repo first', async () => {
   const entry = (heads: ReturnType<typeof head>[]) => ({ artifacts: { headCommits: heads } }) as never
   const last = SessionTotals.lastCommits([entry([head('web', 'aaa111 one'), head('api', 'bbb222 two')]), entry([head('web', 'ccc333 three')])], head('web', 'zzz000 start'))
   expect(last.map(commit => `${commit.repo} ${commit.label}`)).toEqual(['web ccc333 three', 'api bbb222 two'])
+})
+
+test('writes a Q&A card to overview.md when the turn prompt has a question', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const written: { path: string; text: string }[] = []
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', [], undefined, undefined, written)
+  on('fs.read', async () => ({ value: '' }))
+
+  await $.turn.start({ text: 'Which DB should we use?', turnId: 't1' })
+  await $.tool.call({ tool: 'Write', file_path: '/work/web/agent-spec/2026-11-08-db/plan.md', content: 'x' })
+  await $.turn.complete({ answer: 'Use Postgres. It handles the load.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10)
+
+  const card = written.find(entry => entry.path === '/work/web/agent-spec/2026-11-08-db/overview.md')
+  expect(card?.text).toBe('> Session: 2026-11-08-db\n\n## Questions and Answers\n\n### Q1 — Which DB should we use?\n\n**Answer:** Use Postgres. It handles the load.\n')
+})
+
+test('writes no overview.md card when the turn prompt has no question', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const written: { path: string; text: string }[] = []
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', [], undefined, undefined, written)
+
+  await $.turn.start({ text: 'Rename the helper', turnId: 't1' })
+  await $.tool.call({ tool: 'Write', file_path: '/work/web/agent-spec/2026-11-08-db/plan.md', content: 'x' })
+  await $.turn.complete({ answer: 'Renamed.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10)
+
+  expect(written.some(entry => entry.path.endsWith('/overview.md'))).toBe(false)
+})
+
+test('writes no overview.md card when the slug folder is missing', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const written: { path: string; text: string }[] = []
+  engineStubs(on, () => undefined, () => 'clean', () => undefined, null, 'ok', [], undefined, () => false, written)
+
+  await $.turn.start({ text: 'Which DB should we use?', turnId: 't1' })
+  await $.tool.call({ tool: 'Write', file_path: '/work/web/agent-spec/2026-11-08-db/plan.md', content: 'x' })
+  await $.turn.complete({ answer: 'Use Postgres.', durationMs: 1_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10)
+
+  expect(written.some(entry => entry.path.endsWith('/overview.md'))).toBe(false)
 })

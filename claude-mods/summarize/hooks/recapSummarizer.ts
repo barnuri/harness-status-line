@@ -23,7 +23,6 @@ export class RecapSummarizer {
       artifacts.files.length > 0 ? `edited ${RecapSummarizer.count(artifacts.files.length, 'file')}` : '',
       artifacts.commits.length > 0 ? `committed ${artifacts.commits.map(commit => commit.split(' ')[0]).join(', ')}` : '',
       artifacts.pullRequests.some(pr => pr.isCreated === true) ? `opened ${artifacts.pullRequests.filter(pr => pr.isCreated === true).map(pr => pr.label).join(', ')}` : '',
-      artifacts.questions.length > 0 ? `asked ${RecapSummarizer.count(artifacts.questions.length, 'question')}` : '',
       toolTotal > 0 ? `${RecapSummarizer.count(toolTotal, 'tool call')}` : '',
     ].filter(part => part !== '')
     const line = parts.join(', ')

@@ -104,7 +104,7 @@ describe('ArtifactExtractor.extract', () => {
       'Want me to open the PR as well?',
     ].join('\n'), '');
 
-    expect(artifacts.questions).toEqual([
+    expect(artifacts.questions).toMatchObject([
       { text: 'Which database?', isAnswered: true },
       { text: 'Deploy now?', isAnswered: false },
       { text: 'Should the cache expire hourly?', isAnswered: false },

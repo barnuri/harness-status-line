@@ -13,7 +13,10 @@ Deterministic iteration recap pane for Claude Code. It makes no model calls, eve
 - **Empty means hidden.** A section with nothing to show renders nothing, with no placeholder text.
 - **Answers before questions.** The Q&A section shows only `overview.md`: each answer the session
   gave to a user prompt with a `?`, with that question dimmed below. AskUserQuestion replies are
-  not Answers. It is open by default; `q` collapses it.
+  not Answers. It is open by default; `q` collapses it. At every turn end whose prompt has a `?`, the
+  mod appends one card to `overview.md` (`OverviewBoard`, no model call): `### Q<n> — <question>` and
+  `**Answer:**`, the answer cut to 3 sentences. A card whose question already exists is skipped, so a
+  resume never duplicates it.
 - **Session overview.** On every completed turn the mod writes `overview-facts.json` into the
   session's `agent-spec/<slug>/` folder (`OverviewFacts`, no model call). `/summarize overview`
   writes it, runs `~/.agents/skills/session-overview/scripts/render_overview.py <folder>`, and opens

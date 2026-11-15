@@ -51,7 +51,7 @@ describe('RecapSummarizer.heuristic', () => {
       },
     };
 
-    expect(RecapSummarizer.heuristic('', facts)).toBe('Ran /cr, edited 1 file, committed abc1234, opened acme/web#4, asked 1 question, 4 tool calls.');
+    expect(RecapSummarizer.heuristic('', facts)).toBe('Ran /cr, edited 1 file, committed abc1234, opened acme/web#4, 4 tool calls.');
   });
 
   it('clips long sentences', () => {
@@ -59,28 +59,5 @@ describe('RecapSummarizer.heuristic', () => {
 
     expect(summary).toHaveLength(160);
     expect(summary.endsWith('…')).toBe(true);
-  });
-});
-
-describe('RecapSummarizer.buildPrompt', () => {
-  it('lists the iteration facts the model needs', () => {
-    const prompt = RecapSummarizer.buildPrompt(entry, 'Opened the PR.');
-
-    expect(prompt).toContain('User prompt: open a PR');
-    expect(prompt).toContain('Tools used: Bash×2');
-    expect(prompt).toContain('Files changed: /r/a.ts');
-    expect(prompt).toContain('PRs: acme/web#4');
-    expect(prompt).toContain('Commits: abc1234 feat: x');
-    expect(prompt).toContain('Final answer:\nOpened the PR.');
-  });
-});
-
-describe('RecapSummarizer.clean', () => {
-  it('keeps the first line without quotes', () => {
-    expect(RecapSummarizer.clean('"Opened PR #4."\nextra')).toBe('Opened PR #4.');
-  });
-
-  it('rejects an empty reply', () => {
-    expect(RecapSummarizer.clean('  \n ')).toBeNull();
   });
 });

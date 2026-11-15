@@ -5,16 +5,16 @@ import type { PaneTakeover } from '../../src/opencode/summarize/paneOverviewOpen
 const HTML = '/repo/agent-spec/2026-11-12-x/session-overview.html';
 const BACK = '/mods/summarize/overviewBack.js';
 
-function opener(ui: PaneTakeover) {
+function opener(ui: PaneTakeover, mobileFocused: boolean) {
   const fallbacks: string[] = [];
-  const paneOpener = new PaneOverviewOpener(ui, BACK, () => ({ openOverview: async (html: string) => void fallbacks.push(html) }));
+  const paneOpener = new PaneOverviewOpener(ui, BACK, async () => mobileFocused, () => ({ openOverview: async (html: string) => void fallbacks.push(html) }));
   return { paneOpener, fallbacks };
 }
 
 describe('PaneOverviewOpener.open()', () => {
-  it('hands the pane to terminal-browser with the Back preload script', async () => {
+  it('hands the pane to terminal-browser with the Back preload script for a focused phone viewer', async () => {
     const runs: (readonly string[])[] = [];
-    const { paneOpener, fallbacks } = opener({ takeover: async (argv) => (runs.push(argv), 0) });
+    const { paneOpener, fallbacks } = opener({ takeover: async (argv) => (runs.push(argv), 0) }, true);
 
     await paneOpener.open(HTML);
 
@@ -22,9 +22,19 @@ describe('PaneOverviewOpener.open()', () => {
     expect(fallbacks).toEqual([]);
   });
 
+  it('does not take over the pane without a phone viewer; it uses the fallback (OS browser)', async () => {
+    const runs: (readonly string[])[] = [];
+    const { paneOpener, fallbacks } = opener({ takeover: async (argv) => (runs.push(argv), 0) }, false);
+
+    await paneOpener.open(HTML);
+
+    expect(runs).toEqual([]);
+    expect(fallbacks).toEqual([HTML]);
+  });
+
   it('shows a notice and falls back when terminal-browser fails', async () => {
     const notices: string[] = [];
-    const { paneOpener, fallbacks } = opener({ takeover: async () => 1, notice: (message) => void notices.push(message) });
+    const { paneOpener, fallbacks } = opener({ takeover: async () => 1, notice: (message) => void notices.push(message) }, true);
 
     await paneOpener.open(HTML);
 
@@ -33,7 +43,7 @@ describe('PaneOverviewOpener.open()', () => {
   });
 
   it('falls back when the pane cannot be taken over', async () => {
-    const { paneOpener, fallbacks } = opener({});
+    const { paneOpener, fallbacks } = opener({}, true);
 
     await paneOpener.open(HTML);
 
