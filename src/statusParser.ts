@@ -1,6 +1,6 @@
 import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap, CreditBalance, CopilotQuotaState, CopilotQuotaEntry, LlmHubAuto, LlmHubPrice, LlmHubReviewer, LlmHubToday } from './types.ts';
 import { formatTokenCount, formatTokenLimit, formatTokenPair } from './shared/tokenFormat.ts';
-import { resolveSessionSlug } from './shared/sessionSlug.ts';
+import { ensureSessionSlug } from './shared/sessionSlug.ts';
 import { readWorkflowActiveState } from './shared/workflowActiveState.ts';
 import { CursorAutoModelReader } from './shared/cursorAutoModelReader.ts';
 import { CopilotEffortReader } from './shared/copilotEffortReader.ts';
@@ -388,7 +388,7 @@ export class StatusParser {
     const sessionName = typeof status.session_name === 'string' && status.session_name.length > 0
       ? status.session_name
       : null;
-    return resolveSessionSlug(this.resolveSessionId(status)) ?? sessionName;
+    return ensureSessionSlug({ sessionId: this.resolveSessionId(status), title: sessionName, transcriptPath: status.transcript_path, cwd: status.cwd ?? status.workspace?.current_dir }) ?? sessionName;
   }
 
   private resolveSessionId(status: StatusJSON): string | undefined {
