@@ -31,6 +31,13 @@ export class ActivitySegment {
     return { icon: `${this.glyph(state, nowMs)} `, label: '', value: ActivitySegment.VALUES[state], fg: color.fg, bg: color.bg };
   }
 
+  /** The orch work of an idle session: the running spinner and colors with the orch summary as the value. */
+  buildOrch(summary: string, colors: SegmentColorMap, nowMs: number = Date.now()): Segment {
+    const color = colors.activityRunning;
+    const value = /^orch\b/i.test(summary) ? summary : `orch: ${summary}`;
+    return { icon: `${this.glyph('running', nowMs)} `, label: '', value, fg: color.fg, bg: color.bg };
+  }
+
   private glyph(state: ActivityState, nowMs: number): string {
     if (state === 'running' || state === 'compacting') {
       const frames = ActivitySegment.SPINNER_FRAMES;

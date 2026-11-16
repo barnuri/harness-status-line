@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import type { ActivityState } from '../types.ts';
 import type { OpencodeDataEvent, OpencodeTuiSlice } from './types.ts';
 
@@ -16,9 +19,50 @@ export class OpencodeActivityTracker {
     'session.execution.interrupted': 'interrupted',
   };
 
-  private readonly outcomes = new Map<string, ActivityState>();
+  private static readonly ORCH_TTL_SECS = 120;
+  private static readonly ORCH_CACHE_MS = 2000;
+  private static readonly SAFE_ID = /^[A-Za-z0-9._-]+$/;
 
-  constructor(private readonly api: OpencodeTuiSlice) {}
+  private readonly outcomes = new Map<string, ActivityState>();
+  private readonly orchCache = new Map<string, { readAtMs: number; summary: string | null }>();
+
+  constructor(
+    private readonly api: OpencodeTuiSlice,
+    private readonly orchDir: string = path.join(os.homedir(), '.harness-orch', 'activity'),
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  /**
+   * Summary of the orch work (agents, loops, monitors) of a session, or null when orch reports nothing
+   * running. Reads `<orchDir>/<session>.json`, cached for 2 s, never throws. A file older than 120 s is inactive.
+   */
+  orchSummary(sessionId: string | undefined): string | null {
+    if (!sessionId || !OpencodeActivityTracker.SAFE_ID.test(sessionId)) {
+      return null;
+    }
+    const nowMs = this.now();
+    const hit = this.orchCache.get(sessionId);
+    if (hit && nowMs - hit.readAtMs < OpencodeActivityTracker.ORCH_CACHE_MS) {
+      return hit.summary;
+    }
+    const summary = this.readOrch(sessionId, nowMs);
+    this.orchCache.set(sessionId, { readAtMs: nowMs, summary });
+    return summary;
+  }
+
+  private readOrch(sessionId: string, nowMs: number): string | null {
+    try {
+      const data = JSON.parse(fs.readFileSync(path.join(this.orchDir, `${sessionId}.json`), 'utf8')) as Record<string, unknown>;
+      const updated = typeof data.updated_at === 'number' ? data.updated_at : 0;
+      if (data.active !== true || nowMs / 1000 - updated > OpencodeActivityTracker.ORCH_TTL_SECS) {
+        return null;
+      }
+      const summary = typeof data.summary === 'string' ? data.summary.trim() : '';
+      return summary || 'orch running';
+    } catch {
+      return null;
+    }
+  }
 
   /** Starts listening for turn outcomes. Returns the unsubscribe function. */
   start(): () => void {

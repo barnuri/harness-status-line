@@ -58,7 +58,7 @@ class OpencodeStatusLinePlugin {
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private activityTimer: ReturnType<typeof setInterval> | undefined;
   private stopActivityListen: (() => void) | undefined;
-  private shownActivity: ActivityState | null = null;
+  private shownActivity: string | null = null;
 
   // The host's store is the reactive source: a signal from this repo's own solid-js copy is not tracked by the host.
   constructor(private readonly context: PluginContext) {
@@ -69,10 +69,13 @@ class OpencodeStatusLinePlugin {
     // Redraws each spinner frame while the session works, and once on every state change otherwise.
     this.activityTimer = setInterval(() => {
       try {
-        const activity = this.activityTracker.current(this.activityTracker.routeSessionId());
-        const changed = activity !== this.shownActivity;
-        this.shownActivity = activity;
-        if (changed || (activity && ActivitySegment.isAnimated(activity))) {
+        const routeId = this.activityTracker.routeSessionId();
+        const activity = this.activityTracker.current(routeId);
+        const orch = activity === 'idle' ? this.activityTracker.orchSummary(routeId) : null;
+        const shown = orch ? `idle+orch:${orch}` : activity;
+        const changed = shown !== this.shownActivity;
+        this.shownActivity = shown;
+        if (changed || orch || (activity && ActivitySegment.isAnimated(activity))) {
           this.bumpRevision();
         }
       } catch {
@@ -143,9 +146,14 @@ class OpencodeStatusLinePlugin {
 
   // Computed in this process, not in segmentsCli, so the spinner advances every frame instead of every rebuild.
   private activitySegments(sessionId: string | undefined): Segment[] {
-    const activity = this.activityTracker.current(sessionId ?? this.activityTracker.routeSessionId());
+    const id = sessionId ?? this.activityTracker.routeSessionId();
+    const activity = this.activityTracker.current(id);
     if (!activity || !this.config.segments.activity) {
       return [];
+    }
+    const orch = activity === 'idle' ? this.activityTracker.orchSummary(id) : null;
+    if (orch) {
+      return [this.activitySegment.buildOrch(orch, this.config.colors)];
     }
     return [this.activitySegment.build(activity, this.config.colors)];
   }
