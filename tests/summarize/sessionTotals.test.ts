@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { SessionTotals } from '../../claude-mods/summarize/hooks/sessionTotals.ts';
-import type { IterationRecapEntry, IterationRecapLink } from '../../claude-mods/summarize/types';
+import type { IterationSummarizeEntry, IterationSummarizeLink } from '../../claude-mods/summarize/types';
 
-const entry = (index: number, changedRepos: IterationRecapLink[], pullRequests: IterationRecapLink[]): IterationRecapEntry => ({
+const entry = (index: number, changedRepos: IterationSummarizeLink[], pullRequests: IterationSummarizeLink[]): IterationSummarizeEntry => ({
   index,
   turnId: `t${index}`,
   prompt: '',
@@ -28,7 +28,7 @@ describe('SessionTotals', () => {
   });
 
   it('unions skills across every iteration in first-seen order', () => {
-    const withSkills = (index: number, skills: string[]): IterationRecapEntry => {
+    const withSkills = (index: number, skills: string[]): IterationSummarizeEntry => {
       const base = entry(index, [], []);
       return { ...base, artifacts: { ...base.artifacts, skills } };
     };
@@ -40,10 +40,10 @@ describe('SessionTotals', () => {
     expect(SessionTotals.pullRequests(iterations)).toEqual([created]);
   });
 
-  it('tolerates recaps stored before changed repos existed', () => {
+  it('tolerates summarizes stored before changed repos existed', () => {
     const legacy = entry(3, [], []);
     const { changedRepos, ...rest } = legacy.artifacts;
-    expect(SessionTotals.changedRepos([{ ...legacy, artifacts: rest as IterationRecapEntry['artifacts'] }])).toEqual([]);
+    expect(SessionTotals.changedRepos([{ ...legacy, artifacts: rest as IterationSummarizeEntry['artifacts'] }])).toEqual([]);
     expect(changedRepos).toEqual([]);
   });
 });

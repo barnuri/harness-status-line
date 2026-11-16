@@ -1,6 +1,6 @@
-import { RecapErrorLog } from './recapErrorLog'
+import { SummarizeErrorLog } from './summarizeErrorLog'
 
-import type { RecapHost } from './recapHost'
+import type { SummarizeHost } from './summarizeHost'
 import type { ViewerRoute } from './viewerRoute'
 
 /** Opens files and links with the OS opener. Inside herdr, the terminal-browser split opens only for a focused phone viewer. */
@@ -11,8 +11,8 @@ export class FileOpener {
   private static readonly BROWSER_SPLIT = ['--split', 'down', '--size', '0.6'] as const
 
   public constructor(
-    private readonly host: Pick<RecapHost, 'run' | 'isInsideHerdr' | 'osType'>,
-    private readonly errors: RecapErrorLog,
+    private readonly host: Pick<SummarizeHost, 'run' | 'isInsideHerdr' | 'osType'>,
+    private readonly errors: SummarizeErrorLog,
     private readonly route: Pick<ViewerRoute, 'isMobilePanelFocused'> | null = null,
   ) {}
 
@@ -22,7 +22,7 @@ export class FileOpener {
       const opener = (await this.host.osType())?.startsWith('darwin') === false ? 'xdg-open' : 'open'
       await this.host.run([opener, path], { timeoutMs: FileOpener.OPEN_TIMEOUT_MS })
     } catch (error) {
-      void this.errors.log(`open failed for ${path}: ${RecapErrorLog.describe(error)}`)
+      void this.errors.log(`open failed for ${path}: ${SummarizeErrorLog.describe(error)}`)
     }
   }
 
@@ -52,7 +52,7 @@ export class FileOpener {
 
       return false
     } catch (error) {
-      void this.errors.log(`terminal-browser failed for ${html}: ${RecapErrorLog.describe(error)}`)
+      void this.errors.log(`terminal-browser failed for ${html}: ${SummarizeErrorLog.describe(error)}`)
 
       return false
     }

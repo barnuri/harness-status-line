@@ -1,6 +1,6 @@
 import { TextFormat } from './textFormat'
 
-import type { IterationRecapGitFacts, IterationRecapLink } from '../types'
+import type { IterationSummarizeGitFacts, IterationSummarizeLink } from '../types'
 
 export class GitFacts {
   private static readonly MAX_FILES = 200
@@ -8,7 +8,7 @@ export class GitFacts {
   private static readonly MAX_SUBJECT = 40
   private static readonly PULL_REQUEST_URL = /github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/
 
-  public static branchPullRequest(ghJson: string): IterationRecapLink | null {
+  public static branchPullRequest(ghJson: string): IterationSummarizeLink | null {
     try {
       const parsed = GitFacts.object(JSON.parse(ghJson))
       const url = GitFacts.string(parsed?.url)
@@ -27,7 +27,7 @@ export class GitFacts {
     }
   }
 
-  public static fromBashResult(result: unknown): IterationRecapGitFacts | undefined {
+  public static fromBashResult(result: unknown): IterationSummarizeGitFacts | undefined {
     const record = GitFacts.object(result)
     if (record === undefined) {
       return undefined
@@ -59,7 +59,7 @@ export class GitFacts {
     return [...new Set(paths)].slice(0, GitFacts.MAX_FILES)
   }
 
-  private static pullRequest(pr: Record<string, unknown> | undefined): IterationRecapGitFacts['pullRequest'] {
+  private static pullRequest(pr: Record<string, unknown> | undefined): IterationSummarizeGitFacts['pullRequest'] {
     const number = pr?.number
     const action = GitFacts.string(pr?.action)
     if (typeof number !== 'number' || action === undefined) {
@@ -79,7 +79,7 @@ export class GitFacts {
   }
 
   /** `git log --format=%H%x09%s` lines as `abc123 message` links, to the commit page on an http remote. */
-  public static commitLinks(log: string, repoUrl: string | undefined): IterationRecapLink[] {
+  public static commitLinks(log: string, repoUrl: string | undefined): IterationSummarizeLink[] {
     const isWeb = repoUrl?.startsWith('http') === true
 
     return log

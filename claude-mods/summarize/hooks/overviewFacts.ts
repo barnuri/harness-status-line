@@ -1,6 +1,6 @@
 import { SessionTotals } from './sessionTotals'
 
-import type { IterationRecapEntry, IterationRecapLink, OverviewFactsDocument } from '../types'
+import type { IterationSummarizeEntry, IterationSummarizeLink, OverviewFactsDocument } from '../types'
 
 export class OverviewFacts {
   private static readonly SCHEMA_VERSION = 1
@@ -11,8 +11,8 @@ export class OverviewFacts {
     slug: string
     sessionId: string
     cwd: string
-    iterations: readonly IterationRecapEntry[]
-    sessionHead: IterationRecapLink | null
+    iterations: readonly IterationSummarizeEntry[]
+    sessionHead: IterationSummarizeLink | null
   }): OverviewFactsDocument {
     const { iterations } = input
 
@@ -68,7 +68,7 @@ export class OverviewFacts {
     return [...new Set(values)]
   }
 
-  private static toolCounts(iterations: readonly IterationRecapEntry[]): Record<string, number> {
+  private static toolCounts(iterations: readonly IterationSummarizeEntry[]): Record<string, number> {
     const counts: Record<string, number> = {}
     for (const entry of iterations) {
       for (const [tool, count] of Object.entries(entry.toolCounts)) {
@@ -83,7 +83,7 @@ export class OverviewFacts {
     return Object.fromEntries(Object.entries(counts).sort(([left], [right]) => (left < right ? -1 : 1)))
   }
 
-  private static link(link: IterationRecapLink): IterationRecapLink {
+  private static link(link: IterationSummarizeLink): IterationSummarizeLink {
     return {
       label: link.label,
       ...(link.url === undefined ? {} : { url: link.url }),

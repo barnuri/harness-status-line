@@ -1,11 +1,11 @@
 # summarize mod
 
-Deterministic iteration recap pane for Claude Code. It makes no model calls, ever.
+Deterministic iteration summarize pane for Claude Code. It makes no model calls, ever.
 
 ## UI rules
 
 - **One style for everything clickable.** Every link and every button that does something renders
-  through `RecapView.action`: underlined text in `COLORS.action`, dimmed when it does nothing right
+  through `SummarizeView.action`: underlined text in `COLORS.action`, dimmed when it does nothing right
   now. Never render a bare `<Button label=…>` or `<Link>`.
 - **Links are buttons that open.** A URL or file opens through `handlers.onOpenFile` (the OS
   opener). Show a short label only, never the raw URL or path: a repo shows its name, a PR shows
@@ -27,7 +27,7 @@ Deterministic iteration recap pane for Claude Code. It makes no model calls, eve
   the page in a `terminal-browser` split below the pane, else the OS opener. The herdr-mods pane
   (`opencode-summarize/view.ts`) instead hands its own terminal to `terminal-browser` through
   `ui.takeover`. The `overviewBack.js` preload adds a "◀ Back" button, and Esc also quits, so the
-  recap draws again. If that fails, the pane falls back to the split.
+  summarize draws again. If that fails, the pane falls back to the split.
 - **Skills can be missed.** The host may skip this mod's `skill.prompt` hook when another plugin
   ahead of it does not pass the event on. `Skill` tool calls and typed slash commands still count,
   so a skill loaded only through that hook can be absent from the Skills list.

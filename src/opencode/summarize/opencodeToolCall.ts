@@ -1,4 +1,4 @@
-import type { IterationRecapToolCall } from '../../../claude-mods/summarize/types';
+import type { IterationSummarizeToolCall } from '../../../claude-mods/summarize/types';
 
 export interface OpencodeToolPart {
   readonly type?: string;
@@ -11,7 +11,7 @@ export interface OpencodeToolPart {
   };
 }
 
-/** Maps an opencode tool part to the Claude tool call the recap extractor reads. */
+/** Maps an opencode tool part to the Claude tool call the summarize extractor reads. */
 export class OpencodeToolCall {
   private static readonly TOOL_NAMES: Readonly<Record<string, string>> = {
     bash: 'Bash',
@@ -34,7 +34,7 @@ export class OpencodeToolCall {
   private static readonly FINISHED = new Set(['completed', 'error']);
   private static readonly ERROR_STATUS = 'error';
 
-  static from(part: OpencodeToolPart): Omit<IterationRecapToolCall, 'git'> | null {
+  static from(part: OpencodeToolPart): Omit<IterationSummarizeToolCall, 'git'> | null {
     const status = part.state?.status;
     if (part.type !== 'tool' || !part.name || !status || !OpencodeToolCall.FINISHED.has(status)) {
       return null;

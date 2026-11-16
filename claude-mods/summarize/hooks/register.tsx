@@ -3,34 +3,34 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { ArtifactExtractor } from './artifactExtractor'
 import { IterationRecorder } from './iterationRecorder'
-import { RecapCursor } from './recapCursor'
+import { SummarizeCursor } from './summarizeCursor'
 import { GitFacts } from './gitFacts'
-import { RecapView } from './recapView'
-import { RecapErrorLog } from './recapErrorLog'
-import { RecapRepos } from './recapRepos'
-import { RecapSessionFiles } from './recapSessionFiles'
+import { SummarizeView } from './summarizeView'
+import { SummarizeErrorLog } from './summarizeErrorLog'
+import { SummarizeRepos } from './summarizeRepos'
+import { SummarizeSessionFiles } from './summarizeSessionFiles'
 import { ViewerRoute } from './viewerRoute'
 
-import type { RecapHost } from './recapHost'
+import type { SummarizeHost } from './summarizeHost'
 
-import type { IterationRecapEntry, IterationRecapHandlers, IterationRecapLink, IterationRecapScope, SessionAnswers, SessionOverview } from '../types'
+import type { IterationSummarizeEntry, IterationSummarizeHandlers, IterationSummarizeLink, IterationSummarizeScope, SessionAnswers, SessionOverview } from '../types'
 
 const PANE = 'summarize'
 const COMMAND = 'summarize'
 const PANE_ROWS = 28
 const MAX_ITERATIONS = 200
 const SESSION_DIRECTORY = '.'
-const branchPullRequests = new Map<string, IterationRecapLink>()
+const branchPullRequests = new Map<string, IterationSummarizeLink>()
 const RESERVED_TOOL_KEYS = new Set(['tool', 'tool_use_id', 'agentId', 'consent'])
 
-const iterations = atom({ plugin: 'summarize', key: 'iterations' } as const, [] as IterationRecapEntry[])
+const iterations = atom({ plugin: 'summarize', key: 'iterations' } as const, [] as IterationSummarizeEntry[])
 const cursor = atom({ plugin: 'summarize', key: 'cursor' } as const, null as number | null)
 const isBandHidden = atom({ plugin: 'summarize', key: 'isBandHidden' } as const, false)
 const isPaneDismissed = atom({ plugin: 'summarize', key: 'isPaneDismissed' } as const, false)
 const isActive = atom({ plugin: 'summarize', key: 'isActive' } as const, true)
 const answers = atom({ plugin: 'summarize', key: 'answers' } as const, null as SessionAnswers | null)
 const overview = atom({ plugin: 'summarize', key: 'overview' } as const, null as SessionOverview | null)
-const sessionHead = atom({ plugin: 'summarize', key: 'sessionHead' } as const, null as IterationRecapLink | null)
+const sessionHead = atom({ plugin: 'summarize', key: 'sessionHead' } as const, null as IterationSummarizeLink | null)
 const isPromptOpen = atom({ plugin: 'summarize', key: 'isPromptOpen' } as const, false)
 const isHistoryOpen = atom({ plugin: 'summarize', key: 'isHistoryOpen' } as const, false)
 const isQaOpen = atom({ plugin: 'summarize', key: 'isQaOpen' } as const, true)
@@ -48,17 +48,17 @@ async function autoOpenPane($: EngineInterface): Promise<void> {
   await openPane($)
 }
 
-async function moveCursor($: EngineInterface, choose: (list: IterationRecapEntry[], current: number | null) => number | null): Promise<void> {
+async function moveCursor($: EngineInterface, choose: (list: IterationSummarizeEntry[], current: number | null) => number | null): Promise<void> {
   const list = await read($, iterations)
   await update($, cursor, current => choose(list, current))
 }
 
-function handlersFor($: EngineInterface): IterationRecapHandlers {
+function handlersFor($: EngineInterface): IterationSummarizeHandlers {
   return {
-    onPrevious: () => void moveCursor($, (list, current) => RecapCursor.step(list, current, -1)),
-    onNext: () => void moveCursor($, (list, current) => RecapCursor.step(list, current, 1)),
+    onPrevious: () => void moveCursor($, (list, current) => SummarizeCursor.step(list, current, -1)),
+    onNext: () => void moveCursor($, (list, current) => SummarizeCursor.step(list, current, 1)),
     onLatest: () => void moveCursor($, () => null),
-    onJump: index => void moveCursor($, list => RecapCursor.jump(list, index)),
+    onJump: index => void moveCursor($, list => SummarizeCursor.jump(list, index)),
     onOpen: () => void openPane($),
     onHide: () => void update($, isBandHidden, () => true),
     onTogglePrompt: () => void update($, isPromptOpen, isOpen => !isOpen),
@@ -69,7 +69,7 @@ function handlersFor($: EngineInterface): IterationRecapHandlers {
   }
 }
 
-function hostFor($: EngineInterface): RecapHost {
+function hostFor($: EngineInterface): SummarizeHost {
   return {
     run: (argv, options) => $.process.run([...argv], options),
     exists: path => $.fs.exists(path),
@@ -84,10 +84,10 @@ function hostFor($: EngineInterface): RecapHost {
   }
 }
 
-function servicesFor($: EngineInterface): { repos: RecapRepos; files: RecapSessionFiles } {
+function servicesFor($: EngineInterface): { repos: SummarizeRepos; files: SummarizeSessionFiles } {
   const host = hostFor($)
-  const errors = new RecapErrorLog(host)
-  const repos = new RecapRepos(host, errors, branchPullRequests, SESSION_DIRECTORY)
+  const errors = new SummarizeErrorLog(host)
+  const repos = new SummarizeRepos(host, errors, branchPullRequests, SESSION_DIRECTORY)
 
   const env = async (name: string): Promise<string | undefined> => {
     if (name === 'HERDR_PANE_ID') {
@@ -96,7 +96,7 @@ function servicesFor($: EngineInterface): { repos: RecapRepos; files: RecapSessi
     return $.env.get('HERDR_PLUGIN_STATE_DIR')
   }
 
-  return { repos, files: new RecapSessionFiles(host, repos, errors, new ViewerRoute({ ...host, env })) }
+  return { repos, files: new SummarizeSessionFiles(host, repos, errors, new ViewerRoute({ ...host, env })) }
 }
 
 const HTTP_LINK = /^https?:\/\//
@@ -131,7 +131,7 @@ async function herdrBesidePane($: EngineInterface): Promise<string | null> {
 }
 
 /**
- * Writes the recap the herdr-mods pane draws (the opencode summarize view) and opens that pane beside
+ * Writes the summarize the herdr-mods pane draws (the opencode summarize view) and opens that pane beside
  * this Claude pane. Returns whether a pane is open.
  */
 async function showHerdrPane($: EngineInterface, besidePaneId: string, state: unknown, isForced: boolean): Promise<boolean> {
@@ -157,7 +157,7 @@ async function showHerdrPane($: EngineInterface, besidePaneId: string, state: un
 }
 
 /**
- * Inside herdr with the herdr-mods plugin (and `useClaudePane` off), shows the recap in a herdr pane
+ * Inside herdr with the herdr-mods plugin (and `useClaudePane` off), shows the summarize in a herdr pane
  * and returns true; otherwise returns false so the caller uses the Claude pane.
  */
 async function showInHerdr($: EngineInterface, isForced: boolean, useClaudePane: boolean, showFilePaths: boolean): Promise<boolean> {
@@ -180,7 +180,7 @@ async function showInHerdr($: EngineInterface, isForced: boolean, useClaudePane:
     await showHerdrPane($, besidePaneId, state, isForced)
     return true
   } catch (error) {
-    void new RecapErrorLog(hostFor($)).log(`herdr pane failed: ${RecapErrorLog.describe(error)}`)
+    void new SummarizeErrorLog(hostFor($)).log(`herdr pane failed: ${SummarizeErrorLog.describe(error)}`)
     return false
   }
 }
@@ -270,7 +270,7 @@ export const register: Register = (on, options) => {
     if (e.agentId !== undefined) {
       return done
     }
-    const scope: IterationRecapScope = {
+    const scope: IterationSummarizeScope = {
       touchedDirectories: ArtifactExtractor.candidateDirectories(recorder.toolCalls),
       changedDirectories: ArtifactExtractor.changeDirectories(recorder.toolCalls),
       startRoot: turnStartRepo.root,
@@ -316,21 +316,21 @@ export const register: Register = (on, options) => {
       const isHidden = await read($, isBandHidden)
       await update($, isBandHidden, () => !isHidden)
 
-      return { text: isHidden ? 'Recap band shown.' : 'Recap band hidden.' }
+      return { text: isHidden ? 'Summarize band shown.' : 'Summarize band hidden.' }
     }
     if (word === 'overview') {
       return { text: await servicesFor($).files.renderOverview(await read($, iterations), await read($, sessionHead)) }
     }
     const list = await read($, iterations)
     const current = await read($, cursor)
-    const target = word === '' ? current : RecapCursor.parse(word, list, current)
+    const target = word === '' ? current : SummarizeCursor.parse(word, list, current)
     await update($, cursor, () => target)
     await update($, isPaneDismissed, () => false)
     if (!(await showInHerdr($, true, useClaudePane, showFilePaths))) {
       await openPane($)
     }
 
-    return { text: RecapView.commandText(RecapCursor.selected(list, target), list, await $.session.cwd(), await read($, answers), showFilePaths, await read($, sessionHead), false, await read($, overview)) }
+    return { text: SummarizeView.commandText(SummarizeCursor.selected(list, target), list, await $.session.cwd(), await read($, answers), showFilePaths, await read($, sessionHead), false, await read($, overview)) }
   })
 
   on('ui.close', async ($, e, next) => {
@@ -343,7 +343,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const list = await read($, iterations)
-    const selected = RecapCursor.selected(list, await read($, cursor))
+    const selected = SummarizeCursor.selected(list, await read($, cursor))
 
     const layout = {
       isPromptOpen: await read($, isPromptOpen),
@@ -353,7 +353,7 @@ export const register: Register = (on, options) => {
       bodyRows: e.props.scroll.bodyRows,
     }
 
-    return RecapView.pane($.ui.resolve(e), list, selected, await $.session.cwd(), layout, handlersFor($), await read($, answers), await read($, sessionHead), await read($, overview))
+    return SummarizeView.pane($.ui.resolve(e), list, selected, await $.session.cwd(), layout, handlersFor($), await read($, answers), await read($, sessionHead), await read($, overview))
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -367,6 +367,6 @@ export const register: Register = (on, options) => {
       return next(e)
     }
 
-    return RecapView.band($.ui.resolve(e), latest, list.length, handlersFor($))
+    return SummarizeView.band($.ui.resolve(e), latest, list.length, handlersFor($))
   })
 }

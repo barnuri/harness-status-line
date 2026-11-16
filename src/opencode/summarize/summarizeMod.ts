@@ -1,5 +1,5 @@
-import type { OpencodeSessionRecap } from './opencodeSessionRecap.ts';
-import { SessionRecaps } from './sessionRecaps.ts';
+import type { OpencodeSessionSummarize } from './opencodeSessionSummarize.ts';
+import { SessionSummarizes } from './sessionSummarizes.ts';
 import type { SummarizeContext } from './summarizeContext.ts';
 import type { SummarizePaneState } from './types.ts';
 
@@ -14,7 +14,7 @@ interface ModHostApi {
 }
 
 /**
- * The summarize mod for herdr-mods: records each opencode session's turns, publishes the recap, and
+ * The summarize mod for herdr-mods: records each opencode session's turns, publishes the summarize, and
  * opens the session's herdr pane after a new turn. `/summarize overview` writes the overview page.
  */
 export class SummarizeMod {
@@ -22,12 +22,12 @@ export class SummarizeMod {
   private static readonly OVERVIEW_WORD = 'overview';
   private static readonly STARTUP_POLL_MS = 1000;
 
-  private readonly recaps: SessionRecaps;
+  private readonly summarizes: SessionSummarizes;
 
   constructor(private readonly api: ModHostApi) {
     const context = api.opencode as SummarizeContext;
-    this.recaps = new SessionRecaps(context.data, () => api.directory(), (sessionId, recap, isTurnFinished, isInitial) =>
-      this.onChange(sessionId, recap, isTurnFinished, isInitial),
+    this.summarizes = new SessionSummarizes(context.data, () => api.directory(), (sessionId, summarize, isTurnFinished, isInitial) =>
+      this.onChange(sessionId, summarize, isTurnFinished, isInitial),
     );
   }
 
@@ -39,7 +39,7 @@ export class SummarizeMod {
       pane: { module: viewModule },
       command: {
         name: SummarizeMod.ID,
-        description: 'Open the iteration recap beside opencode, or write the session overview page (overview)',
+        description: 'Open the iteration summarize beside opencode, or write the session overview page (overview)',
         run: (args: string) => instance?.command(args),
       },
       setup: (api: ModHostApi) => {
@@ -51,7 +51,7 @@ export class SummarizeMod {
 
   /** Follows turn events, and loads the session the person opens at startup or resume so its pane opens by itself. */
   start(): () => void {
-    const release = this.recaps.watch();
+    const release = this.summarizes.watch();
     let timer: ReturnType<typeof setInterval> | undefined = setInterval(() => {
       const sessionId = this.api.currentSessionId();
       if (sessionId === undefined) {
@@ -59,7 +59,7 @@ export class SummarizeMod {
       }
       clearInterval(timer);
       timer = undefined;
-      this.recaps.recapOf(sessionId);
+      this.summarizes.summarizeOf(sessionId);
     }, SummarizeMod.STARTUP_POLL_MS);
     return () => {
       if (timer !== undefined) {
@@ -74,30 +74,30 @@ export class SummarizeMod {
     if (!sessionId) {
       return 'Open a session first.';
     }
-    const recap = await this.recaps.ready(sessionId);
+    const summarize = await this.summarizes.ready(sessionId);
     if (args.toLowerCase() === SummarizeMod.OVERVIEW_WORD) {
-      return recap.renderOverview();
+      return summarize.renderOverview();
     }
-    await this.publish(sessionId, recap);
+    await this.publish(sessionId, summarize);
     const isOpen = await this.api.openPane(sessionId, { isForced: true });
-    return isOpen ? undefined : 'The recap pane did not open.';
+    return isOpen ? undefined : 'The summarize pane did not open.';
   }
 
-  private async onChange(sessionId: string, recap: OpencodeSessionRecap, isTurnFinished: boolean, isInitial: boolean): Promise<void> {
-    await this.publish(sessionId, recap);
-    if ((isTurnFinished || isInitial) && recap.entries.length > 0) {
+  private async onChange(sessionId: string, summarize: OpencodeSessionSummarize, isTurnFinished: boolean, isInitial: boolean): Promise<void> {
+    await this.publish(sessionId, summarize);
+    if ((isTurnFinished || isInitial) && summarize.entries.length > 0) {
       await this.api.openPane(sessionId);
     }
   }
 
-  private async publish(sessionId: string, recap: OpencodeSessionRecap): Promise<void> {
+  private async publish(sessionId: string, summarize: OpencodeSessionSummarize): Promise<void> {
     const state: SummarizePaneState = {
       cwd: this.api.directory(),
       showFilePaths: this.api.options['showFilePaths'] === true,
-      entries: recap.entries,
-      answers: recap.answers,
-      overview: recap.overview,
-      sessionHead: recap.sessionHead,
+      entries: summarize.entries,
+      answers: summarize.answers,
+      overview: summarize.overview,
+      sessionHead: summarize.sessionHead,
     };
     await this.api.publish(sessionId, state);
   }

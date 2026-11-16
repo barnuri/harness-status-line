@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { FileOpener } from '../../claude-mods/summarize/hooks/fileOpener.ts';
-import type { RecapErrorLog } from '../../claude-mods/summarize/hooks/recapErrorLog.ts';
+import type { SummarizeErrorLog } from '../../claude-mods/summarize/hooks/summarizeErrorLog.ts';
 
 const HTML = '/repo/agent-spec/2026-11-12-x/session-overview.html';
 
@@ -15,7 +15,7 @@ function opener(isInsideHerdr: boolean, mobileFocused: boolean, browserExitCode:
     isInsideHerdr: async () => isInsideHerdr,
     osType: async () => 'darwin',
   };
-  const errors = { log: async (text: string) => void logged.push(text) } as unknown as RecapErrorLog;
+  const errors = { log: async (text: string) => void logged.push(text) } as unknown as SummarizeErrorLog;
   const route = { isMobilePanelFocused: async () => mobileFocused };
   return { fileOpener: new FileOpener(host, errors, route), runs, logged };
 }
@@ -68,7 +68,7 @@ function linkOpener(isInsideHerdr: boolean, mobileFocused: boolean, browserExitC
     isInsideHerdr: async () => isInsideHerdr,
     osType: async () => 'darwin',
   };
-  const errors = { log: async (text: string) => void logged.push(text) } as unknown as RecapErrorLog;
+  const errors = { log: async (text: string) => void logged.push(text) } as unknown as SummarizeErrorLog;
   const route = { isMobilePanelFocused: async () => mobileFocused };
   return { fileOpener: new FileOpener(host, errors, route), runs, logged };
 }

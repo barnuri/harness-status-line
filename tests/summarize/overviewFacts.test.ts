@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { OverviewFacts } from '../../claude-mods/summarize/hooks/overviewFacts.ts';
-import type { IterationRecapEntry, IterationRecapLink } from '../../claude-mods/summarize/types';
+import type { IterationSummarizeEntry, IterationSummarizeLink } from '../../claude-mods/summarize/types';
 
-const entry = (index: number, artifacts: Partial<IterationRecapEntry['artifacts']> = {}, extra: Partial<IterationRecapEntry> = {}): IterationRecapEntry => ({
+const entry = (index: number, artifacts: Partial<IterationSummarizeEntry['artifacts']> = {}, extra: Partial<IterationSummarizeEntry> = {}): IterationSummarizeEntry => ({
   index,
   turnId: `t${index}`,
   prompt: '',
@@ -16,7 +16,7 @@ const entry = (index: number, artifacts: Partial<IterationRecapEntry['artifacts'
   ...extra,
 });
 
-const input = (iterations: IterationRecapEntry[], sessionHead: IterationRecapLink | null = null) => ({
+const input = (iterations: IterationSummarizeEntry[], sessionHead: IterationSummarizeLink | null = null) => ({
   slug: 'session-overview',
   sessionId: 'sess-1',
   cwd: '/work/web',
@@ -67,7 +67,7 @@ describe('OverviewFacts', () => {
   });
 
   it('keeps link keys in the order label, url, repo, isCreated, isBranch', () => {
-    const link: IterationRecapLink = { isBranch: true, repo: 'web', isCreated: true, url: 'https://github.com/acme/web/pull/4', label: 'acme/web#4' };
+    const link: IterationSummarizeLink = { isBranch: true, repo: 'web', isCreated: true, url: 'https://github.com/acme/web/pull/4', label: 'acme/web#4' };
     const parsed = JSON.parse(OverviewFacts.serialize(OverviewFacts.build(input([entry(1, { pullRequests: [link] })])))) as { pullRequests: Record<string, unknown>[] };
 
     expect(Object.keys(parsed.pullRequests[0] ?? {})).toEqual(['label', 'url', 'repo', 'isCreated', 'isBranch']);
@@ -121,7 +121,7 @@ describe('OverviewFacts', () => {
   });
 
   it('takes skills, changed repos, pull requests and commits from the pane helpers', () => {
-    const created: IterationRecapLink = { label: 'acme/web#4', url: 'https://github.com/acme/web/pull/4', isCreated: true };
+    const created: IterationSummarizeLink = { label: 'acme/web#4', url: 'https://github.com/acme/web/pull/4', isCreated: true };
     const document = OverviewFacts.build(input([
       entry(1, { skills: ['/code-gen'], changedRepos: [{ label: 'web', url: 'file:///work/web' }], pullRequests: [created, { label: 'acme/web#9', url: 'https://github.com/acme/web/pull/9' }], commitLinks: [{ label: 'abc1234 fix', url: 'https://github.com/acme/web/commit/abc1234' }] }),
       entry(2, { skills: ['/cr', '/code-gen'], changedRepos: [{ label: 'web', url: 'https://github.com/acme/web' }, { label: 'api' }], pullRequests: [created], commitLinks: [{ label: 'abc1234 fix', url: 'https://github.com/acme/web/commit/abc1234' }, { label: 'def5678 add', url: 'https://github.com/acme/web/commit/def5678' }] }),

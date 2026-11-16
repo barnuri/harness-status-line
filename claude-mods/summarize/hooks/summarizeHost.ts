@@ -1,4 +1,4 @@
-export interface RecapHost {
+export interface SummarizeHost {
   run(argv: readonly string[], options: { readonly cwd?: string; readonly timeoutMs: number }): Promise<{ exitCode: number; stdout: string; stderr: string }>
   exists(path: string): Promise<boolean>
   read(path: string): Promise<string>

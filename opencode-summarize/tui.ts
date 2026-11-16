@@ -7,7 +7,7 @@ export default {
     try {
       return new SummarizePlugin(context).register();
     } catch {
-      /* never throw into the TUI — a broken recap must not take opencode down */
+      /* never throw into the TUI — a broken summarize must not take opencode down */
       return undefined;
     }
   },

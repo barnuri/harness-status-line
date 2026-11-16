@@ -1,7 +1,7 @@
 import type {
-  IterationRecapEntry,
-  IterationRecapLink,
-  IterationRecapToolCall,
+  IterationSummarizeEntry,
+  IterationSummarizeLink,
+  IterationSummarizeToolCall,
   SessionAnswers,
   SessionOverview,
 } from '../../../claude-mods/summarize/types';
@@ -25,7 +25,7 @@ export interface OpencodeTurn {
   readonly prompt: string;
   readonly startedAt: number;
   readonly skills: readonly string[];
-  readonly calls: readonly Omit<IterationRecapToolCall, 'git'>[];
+  readonly calls: readonly Omit<IterationSummarizeToolCall, 'git'>[];
   readonly answer: string;
   readonly durationMs: number;
   readonly outputTokens: number;
@@ -37,8 +37,8 @@ export interface OpencodeTurn {
 export interface SummarizePaneState {
   readonly cwd: string;
   readonly showFilePaths: boolean;
-  readonly entries: readonly IterationRecapEntry[];
+  readonly entries: readonly IterationSummarizeEntry[];
   readonly answers: SessionAnswers | null;
   readonly overview: SessionOverview | null;
-  readonly sessionHead: IterationRecapLink | null;
+  readonly sessionHead: IterationSummarizeLink | null;
 }

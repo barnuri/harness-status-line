@@ -1,12 +1,12 @@
 import { jsx } from '@opentui/solid/jsx-runtime';
 import type { JSX } from '@opentui/solid/jsx-runtime';
-import { RecapText } from '../../../claude-mods/summarize/hooks/recapText.ts';
-import type { OpencodeSessionRecap } from './opencodeSessionRecap.ts';
-import { SessionRecaps } from './sessionRecaps.ts';
+import { SummarizeText } from '../../../claude-mods/summarize/hooks/summarizeText.ts';
+import type { OpencodeSessionSummarize } from './opencodeSessionSummarize.ts';
+import { SessionSummarizes } from './sessionSummarizes.ts';
 import type { SummarizeContext } from './summarizeContext.ts';
 
 /**
- * The summarize recap drawn inside opencode: the sidebar, the session panel and an optional band.
+ * The summarize drawn inside opencode: the sidebar, the session panel and an optional band.
  * The herdr pane version is the herdr-mods mod in `opencode-summarize/mod.ts`.
  */
 export class SummarizePlugin {
@@ -17,7 +17,7 @@ export class SummarizePlugin {
   private static readonly MUTED_COLOR = '#999999';
   private static readonly HEADING_PREFIXES = ['This session', 'Iteration '];
 
-  private readonly recaps: SessionRecaps;
+  private readonly summarizes: SessionSummarizes;
   private readonly revision: ReturnType<SummarizeContext['storage']['memory']>;
   private readonly showFilePaths: boolean;
   private isBandShown: boolean;
@@ -29,10 +29,10 @@ export class SummarizePlugin {
     this.revision = context.storage.memory('summarize', { initial: { revision: 0 } });
     this.showFilePaths = context.options?.['showFilePaths'] === true;
     this.isBandShown = context.options?.['showBand'] === true;
-    this.recaps = new SessionRecaps(context.data, () => this.directory(), (sessionId, recap, isTurnFinished, isInitial) => {
+    this.summarizes = new SessionSummarizes(context.data, () => this.directory(), (sessionId, summarize, isTurnFinished, isInitial) => {
       this.bump();
       if (isTurnFinished || isInitial) {
-        this.autoOpenPanel(sessionId, recap);
+        this.autoOpenPanel(sessionId, summarize);
       }
     });
   }
@@ -45,7 +45,7 @@ export class SummarizePlugin {
         render: (input) => (input.name === SummarizePlugin.COMMAND ? this.panel(input.sessionID, true) : null),
       }),
       this.context.ui.slot({ append: 'session.composer.top', render: (input) => this.band(input.sessionID) }),
-      this.recaps.watch(),
+      this.summarizes.watch(),
       this.context.ui.slot({ append: 'app', render: () => this.registerCommand() }),
     ];
     return () => {
@@ -65,7 +65,7 @@ export class SummarizePlugin {
             id: SummarizePlugin.COMMAND,
             title: 'Summarize',
             group: 'Session',
-            description: 'Browse the iteration recap (prev, next, last, <n>), toggle the band (band), or write the session overview (overview)',
+            description: 'Browse the iteration summarize (prev, next, last, <n>), toggle the band (band), or write the session overview (overview)',
             palette: true,
             slash: { name: SummarizePlugin.COMMAND, arguments: true },
             run: (input?: string) => void this.command(input ?? ''),
@@ -73,7 +73,7 @@ export class SummarizePlugin {
         ],
       }));
     } catch (error) {
-      void this.recaps.logError('', error);
+      void this.summarizes.logError('', error);
     }
     return null;
   }
@@ -94,7 +94,7 @@ export class SummarizePlugin {
       style: { width: '100%' },
       get children() {
         void plugin.revision[0].revision;
-        const latest = plugin.recaps.recapOf(sessionId).entries.at(-1);
+        const latest = plugin.summarizes.summarizeOf(sessionId).entries.at(-1);
         if (!plugin.isBandShown || !latest) {
           return null;
         }
@@ -103,14 +103,14 @@ export class SummarizePlugin {
     });
   }
 
-  // The sidebar hides an empty recap; the panel `/summarize` opens says so, like the Claude reply.
+  // The sidebar hides an empty summarize; the panel `/summarize` opens says so, like the Claude reply.
   private panelLines(sessionId: string, isOpenedPanel: boolean): JSX.Element[] {
     void this.revision[0].revision;
-    const recap = this.recaps.recapOf(sessionId);
-    if (recap.entries.length === 0) {
+    const summarize = this.summarizes.summarizeOf(sessionId);
+    if (summarize.entries.length === 0) {
       return isOpenedPanel ? [jsx('text', { fg: SummarizePlugin.MUTED_COLOR, children: 'No iterations recorded yet.' })] : [];
     }
-    const text = RecapText.commandText(recap.selected(), recap.entries, this.directory(), recap.answers, this.showFilePaths, recap.sessionHead, true, recap.overview);
+    const text = SummarizeText.commandText(summarize.selected(), summarize.entries, this.directory(), summarize.answers, this.showFilePaths, summarize.sessionHead, true, summarize.overview);
     return [
       jsx('text', { fg: SummarizePlugin.HEADING_COLOR, children: 'Summarize' }),
       ...text.split('\n').map((line) =>
@@ -123,14 +123,14 @@ export class SummarizePlugin {
   }
 
   // Like the Claude pane: open beside the chat after every new turn, until the person closes it.
-  private autoOpenPanel(sessionId: string, recap: OpencodeSessionRecap): void {
+  private autoOpenPanel(sessionId: string, summarize: OpencodeSessionSummarize): void {
     const isShown = this.context.ui.panel.current()?.name === SummarizePlugin.COMMAND;
     if (this.isPanelOpenedByPlugin && !isShown) {
       this.isPanelDismissed = true;
     }
     const route = this.context.ui.router.current();
     const isViewed = route.type === 'session' && route.sessionID === sessionId;
-    if (this.isPanelDismissed || isShown || !isViewed || recap.entries.length === 0) {
+    if (this.isPanelDismissed || isShown || !isViewed || summarize.entries.length === 0) {
       return;
     }
     this.openPanel();
@@ -147,19 +147,19 @@ export class SummarizePlugin {
       this.toast('Open a session first.');
       return;
     }
-    const recap = await this.recaps.ready(sessionId);
+    const summarize = await this.summarizes.ready(sessionId);
     const word = input.trim().toLowerCase();
     if (word === SummarizePlugin.OVERVIEW_WORD) {
-      this.toast(await recap.renderOverview());
+      this.toast(await summarize.renderOverview());
       return;
     }
     if (word === SummarizePlugin.BAND_WORD) {
       this.isBandShown = !this.isBandShown;
-      this.toast(this.isBandShown ? 'Recap band shown.' : 'Recap band hidden.');
+      this.toast(this.isBandShown ? 'Summarize band shown.' : 'Summarize band hidden.');
       this.bump();
       return;
     }
-    recap.moveCursor(word);
+    summarize.moveCursor(word);
     this.bump();
     this.isPanelDismissed = false;
     this.openPanel();

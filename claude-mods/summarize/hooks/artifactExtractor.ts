@@ -2,10 +2,10 @@ import { RepoLink } from './repoLink'
 import { TextFormat } from './textFormat'
 
 import type {
-  IterationRecapArtifacts,
-  IterationRecapLink,
-  IterationRecapQuestion,
-  IterationRecapToolCall,
+  IterationSummarizeArtifacts,
+  IterationSummarizeLink,
+  IterationSummarizeQuestion,
+  IterationSummarizeToolCall,
 } from '../types'
 
 export class ArtifactExtractor {
@@ -45,7 +45,7 @@ export class ArtifactExtractor {
   private static readonly MAX_LABEL_LENGTH = 80
   private static readonly OVERVIEW_FILE = /(\/[^\s"'`$]*\/agent-spec\/[^/\s"'`$]+)\/(?:overview\.md|session-overview\.html)\b/g
 
-  public static extract(calls: readonly IterationRecapToolCall[], answer: string, prompt: string): IterationRecapArtifacts {
+  public static extract(calls: readonly IterationSummarizeToolCall[], answer: string, prompt: string): IterationSummarizeArtifacts {
     return {
       files: ArtifactExtractor.files(calls),
       overviewFiles: ArtifactExtractor.overviewFiles(calls),
@@ -60,7 +60,7 @@ export class ArtifactExtractor {
     }
   }
 
-  public static candidateDirectories(calls: readonly IterationRecapToolCall[]): string[] {
+  public static candidateDirectories(calls: readonly IterationSummarizeToolCall[]): string[] {
     const fileDirectories = ArtifactExtractor.files(calls)
       .filter(file => file.lastIndexOf('/') > 0)
       .map(file => file.slice(0, file.lastIndexOf('/')))
@@ -72,7 +72,7 @@ export class ArtifactExtractor {
     return ArtifactExtractor.unique([...fileDirectories, ...commandDirectories].filter(directory => directory !== '' && directory !== '-'))
   }
 
-  public static changeDirectories(calls: readonly IterationRecapToolCall[]): string[] {
+  public static changeDirectories(calls: readonly IterationSummarizeToolCall[]): string[] {
     const fileDirectories = ArtifactExtractor.files(calls)
       .filter(file => file.lastIndexOf('/') > 0)
       .map(file => file.slice(0, file.lastIndexOf('/')))
@@ -90,7 +90,7 @@ export class ArtifactExtractor {
     return ArtifactExtractor.unique([...fileDirectories, ...gitWriteDirectories].filter(directory => directory !== '' && directory !== '-'))
   }
 
-  public static createdPullRequestRepos(artifacts: IterationRecapArtifacts): IterationRecapLink[] {
+  public static createdPullRequestRepos(artifacts: IterationSummarizeArtifacts): IterationSummarizeLink[] {
     return RepoLink.unique(
       artifacts.pullRequests
         .filter(link => link.isCreated === true)
@@ -98,7 +98,7 @@ export class ArtifactExtractor {
     )
   }
 
-  private static skills(calls: readonly IterationRecapToolCall[], prompt: string): string[] {
+  private static skills(calls: readonly IterationSummarizeToolCall[], prompt: string): string[] {
     const fromTools = calls
       .filter(call => call.tool === ArtifactExtractor.SKILL_TOOL)
       .map(call => ArtifactExtractor.stringField(call.input, 'skill'))
@@ -108,7 +108,7 @@ export class ArtifactExtractor {
     return ArtifactExtractor.unique([...(typed === undefined ? [] : [typed]), ...fromTools].map(skill => `/${skill}`))
   }
 
-  private static files(calls: readonly IterationRecapToolCall[]): string[] {
+  private static files(calls: readonly IterationSummarizeToolCall[]): string[] {
     const paths = calls
       .filter(call => ArtifactExtractor.FILE_EDIT_TOOLS.has(call.tool) && !call.isError)
       .map(call => ArtifactExtractor.stringField(call.input, 'file_path') ?? ArtifactExtractor.stringField(call.input, 'notebook_path'))
@@ -117,7 +117,7 @@ export class ArtifactExtractor {
     return ArtifactExtractor.unique([...paths.filter((path): path is string => path !== undefined), ...shellEdits])
   }
 
-  private static remoteRepos(calls: readonly IterationRecapToolCall[], answer: string): string[] {
+  private static remoteRepos(calls: readonly IterationSummarizeToolCall[], answer: string): string[] {
     const repos = [...ArtifactExtractor.bashTexts(calls), answer].flatMap(text => [
       ...[...text.matchAll(ArtifactExtractor.GITHUB_REPO_URL)]
         .filter(([, owner = '']) => !ArtifactExtractor.NON_REPO_OWNERS.has(owner))
@@ -128,7 +128,7 @@ export class ArtifactExtractor {
     return ArtifactExtractor.unique(repos)
   }
 
-  private static pullRequests(calls: readonly IterationRecapToolCall[], answer: string): IterationRecapLink[] {
+  private static pullRequests(calls: readonly IterationSummarizeToolCall[], answer: string): IterationSummarizeLink[] {
     const fromEngine = calls.flatMap(call => ArtifactExtractor.engineLink(call))
     const fromCreateOutput = calls
       .filter(call => !call.isError && ArtifactExtractor.isPullRequestCreation(call))
@@ -140,13 +140,13 @@ export class ArtifactExtractor {
     const numbered = ArtifactExtractor.bashCommands(calls)
       .flatMap(command => [...command.matchAll(ArtifactExtractor.GH_PR_COMMAND)])
       .filter(([, , number]) => number !== undefined && !linkedNumbers.has(number))
-      .map(([, action = '', number = '']): IterationRecapLink => ({ label: `#${number} (gh pr ${action})` }))
+      .map(([, action = '', number = '']): IterationSummarizeLink => ({ label: `#${number} (gh pr ${action})` }))
     const byLabel = new Map([...linked, ...numbered].map(link => [link.label, link]))
 
     return [...byLabel.values()]
   }
 
-  private static engineLink(call: IterationRecapToolCall): IterationRecapLink[] {
+  private static engineLink(call: IterationSummarizeToolCall): IterationSummarizeLink[] {
     const pr = call.git?.pullRequest
     if (pr === undefined) {
       return []
@@ -157,19 +157,19 @@ export class ArtifactExtractor {
     return [{ label, ...(pr.url === undefined ? {} : { url: pr.url }), ...(pr.action === 'created' ? { isCreated: true } : {}) }]
   }
 
-  private static isPullRequestCreation(call: IterationRecapToolCall): boolean {
+  private static isPullRequestCreation(call: IterationSummarizeToolCall): boolean {
     return ArtifactExtractor.GH_PR_CREATE.test(ArtifactExtractor.bashCommand(call) ?? '') || ArtifactExtractor.PR_CREATE_TOOL.test(call.tool)
   }
 
-  private static pullRequestLinks(text: string, isCreated: boolean): IterationRecapLink[] {
-    return [...text.matchAll(ArtifactExtractor.PULL_REQUEST_URL)].map(([url, owner = '', name = '', number = '']): IterationRecapLink => ({
+  private static pullRequestLinks(text: string, isCreated: boolean): IterationSummarizeLink[] {
+    return [...text.matchAll(ArtifactExtractor.PULL_REQUEST_URL)].map(([url, owner = '', name = '', number = '']): IterationSummarizeLink => ({
       label: `${owner}/${name}#${number}`,
       url,
       ...(isCreated ? { isCreated } : {}),
     }))
   }
 
-  private static reviews(calls: readonly IterationRecapToolCall[]): string[] {
+  private static reviews(calls: readonly IterationSummarizeToolCall[]): string[] {
     const reviews = calls.flatMap(call => [
       ...ArtifactExtractor.skillAndAgentLabels(call, ArtifactExtractor.REVIEW_SKILL, ArtifactExtractor.REVIEW_AGENT),
       ...(call.tool === 'ReportFindings' ? [`${Array.isArray(call.input.findings) ? call.input.findings.length : 0} findings reported`] : []),
@@ -179,7 +179,7 @@ export class ArtifactExtractor {
     return ArtifactExtractor.unique(reviews)
   }
 
-  private static plans(calls: readonly IterationRecapToolCall[]): string[] {
+  private static plans(calls: readonly IterationSummarizeToolCall[]): string[] {
     const plans = calls.flatMap(call => [
       ...(call.tool === 'ExitPlanMode' ? [`plan: ${ArtifactExtractor.firstLine(ArtifactExtractor.stringField(call.input, 'plan') ?? '')}`] : []),
       ...ArtifactExtractor.skillAndAgentLabels(call, ArtifactExtractor.PLAN_SKILL, ArtifactExtractor.PLAN_AGENT),
@@ -190,7 +190,7 @@ export class ArtifactExtractor {
     return ArtifactExtractor.unique([...plans, ...planFiles])
   }
 
-  private static commits(calls: readonly IterationRecapToolCall[]): string[] {
+  private static commits(calls: readonly IterationSummarizeToolCall[]): string[] {
     const commits = calls
       .filter(call => !call.isError && (call.git?.commitSha !== undefined || ArtifactExtractor.GIT_COMMIT.test(ArtifactExtractor.bashCommand(call) ?? '')))
       .map(call => ArtifactExtractor.commitLabel(call))
@@ -198,7 +198,7 @@ export class ArtifactExtractor {
     return ArtifactExtractor.unique(commits.filter(commit => commit !== ''))
   }
 
-  private static commitLabel(call: IterationRecapToolCall): string {
+  private static commitLabel(call: IterationSummarizeToolCall): string {
     const engineSha = call.git?.commitSha
     const output = ArtifactExtractor.GIT_COMMIT_OUTPUT.exec(call.resultText)
     if (output !== null) {
@@ -214,7 +214,7 @@ export class ArtifactExtractor {
   }
 
   /** Absolute `agent-spec/<slug>/overview.md` paths a tool wrote or rendered (`session-overview.html` maps to its overview.md), from inputs and results. */
-  private static overviewFiles(calls: readonly IterationRecapToolCall[]): string[] {
+  private static overviewFiles(calls: readonly IterationSummarizeToolCall[]): string[] {
     const found = calls.flatMap(call => {
       const text = `${JSON.stringify(call.input)}\n${call.resultText}`
 
@@ -224,7 +224,7 @@ export class ArtifactExtractor {
     return [...new Set(found)]
   }
 
-  private static askedQuestions(calls: readonly IterationRecapToolCall[]): IterationRecapQuestion[] {
+  private static askedQuestions(calls: readonly IterationSummarizeToolCall[]): IterationSummarizeQuestion[] {
     return calls
       .filter(call => call.tool === 'AskUserQuestion')
       .flatMap(call => {
@@ -275,7 +275,7 @@ export class ArtifactExtractor {
     return sentenceEnd >= 0 ? sentenceEnd : segment.lastIndexOf('"')
   }
 
-  private static answerQuestions(answer: string): IterationRecapQuestion[] {
+  private static answerQuestions(answer: string): IterationSummarizeQuestion[] {
     const lines = answer
       .replace(TextFormat.FENCED_BLOCK, '')
       .split('\n')
@@ -287,7 +287,7 @@ export class ArtifactExtractor {
       .map(text => ({ text: ArtifactExtractor.shorten(text), isAnswered: false }))
   }
 
-  private static skillAndAgentLabels(call: IterationRecapToolCall, skillPattern: RegExp, agentPattern: RegExp): string[] {
+  private static skillAndAgentLabels(call: IterationSummarizeToolCall, skillPattern: RegExp, agentPattern: RegExp): string[] {
     const skill = call.tool === ArtifactExtractor.SKILL_TOOL ? ArtifactExtractor.stringField(call.input, 'skill') : undefined
     const agentType = call.tool === ArtifactExtractor.AGENT_TOOL ? ArtifactExtractor.stringField(call.input, 'subagent_type') : undefined
 
@@ -303,15 +303,15 @@ export class ArtifactExtractor {
     return plain.replace(ArtifactExtractor.LIST_MARKER, '').replace(ArtifactExtractor.LIST_MARKER, '').trim()
   }
 
-  private static bashCommand(call: IterationRecapToolCall): string | undefined {
+  private static bashCommand(call: IterationSummarizeToolCall): string | undefined {
     return call.tool === ArtifactExtractor.BASH_TOOL ? ArtifactExtractor.stringField(call.input, 'command') : undefined
   }
 
-  private static bashCommands(calls: readonly IterationRecapToolCall[]): string[] {
+  private static bashCommands(calls: readonly IterationSummarizeToolCall[]): string[] {
     return calls.map(call => ArtifactExtractor.bashCommand(call)).filter((command): command is string => command !== undefined)
   }
 
-  private static bashTexts(calls: readonly IterationRecapToolCall[]): string[] {
+  private static bashTexts(calls: readonly IterationSummarizeToolCall[]): string[] {
     return calls
       .filter(call => call.tool === ArtifactExtractor.BASH_TOOL)
       .flatMap(call => [ArtifactExtractor.bashCommand(call) ?? '', call.resultText])

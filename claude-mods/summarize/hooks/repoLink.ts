@@ -1,4 +1,4 @@
-import type { IterationRecapLink } from '../types'
+import type { IterationSummarizeLink } from '../types'
 
 export class RepoLink {
   private static readonly SCP_REMOTE = /^[\w.-]+@([\w.-]+):(.+?)(?:\.git)?\/?$/
@@ -6,19 +6,19 @@ export class RepoLink {
   private static readonly HTTP_REMOTE = /^https?:\/\/(?:[^@/]+@)?([\w.-]+(?::\d+)?)\/(.+?)(?:\.git)?\/?$/
   private static readonly GITHUB = 'https://github.com'
 
-  public static fromRoot(root: string, remote: string): IterationRecapLink {
+  public static fromRoot(root: string, remote: string): IterationSummarizeLink {
     const label = root.split('/').at(-1) ?? root
     const url = RepoLink.webUrl(remote.trim())
 
     return { label, url: url ?? `file://${root}` }
   }
 
-  public static fromSlug(slug: string): IterationRecapLink {
+  public static fromSlug(slug: string): IterationSummarizeLink {
     return { label: slug, url: `${RepoLink.GITHUB}/${slug}` }
   }
 
-  public static unique(links: readonly (IterationRecapLink | string)[]): IterationRecapLink[] {
-    const byLabel = new Map<string, IterationRecapLink>()
+  public static unique(links: readonly (IterationSummarizeLink | string)[]): IterationSummarizeLink[] {
+    const byLabel = new Map<string, IterationSummarizeLink>()
     for (const item of links) {
       const link = typeof item === 'string' ? { label: item } : item
       const known = byLabel.get(link.label)

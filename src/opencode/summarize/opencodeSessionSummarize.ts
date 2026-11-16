@@ -1,12 +1,12 @@
 import { ArtifactExtractor } from '../../../claude-mods/summarize/hooks/artifactExtractor.ts';
 import { IterationRecorder } from '../../../claude-mods/summarize/hooks/iterationRecorder.ts';
-import { RecapCursor } from '../../../claude-mods/summarize/hooks/recapCursor.ts';
-import type { RecapRepos } from '../../../claude-mods/summarize/hooks/recapRepos.ts';
-import type { RecapSessionFiles } from '../../../claude-mods/summarize/hooks/recapSessionFiles.ts';
+import { SummarizeCursor } from '../../../claude-mods/summarize/hooks/summarizeCursor.ts';
+import type { SummarizeRepos } from '../../../claude-mods/summarize/hooks/summarizeRepos.ts';
+import type { SummarizeSessionFiles } from '../../../claude-mods/summarize/hooks/summarizeSessionFiles.ts';
 import type {
-  IterationRecapEntry,
-  IterationRecapLink,
-  IterationRecapScope,
+  IterationSummarizeEntry,
+  IterationSummarizeLink,
+  IterationSummarizeScope,
   SessionAnswers,
   SessionOverview,
 } from '../../../claude-mods/summarize/types';
@@ -14,29 +14,29 @@ import type { OpencodeTurn } from './types.ts';
 
 type RepoSnapshot = { root: string | null; state: string | null };
 
-/** The recap of one opencode session: an entry per finished turn, the session Q&A and the session repo HEAD. */
-export class OpencodeSessionRecap {
+/** The summarize of one opencode session: an entry per finished turn, the session Q&A and the session repo HEAD. */
+export class OpencodeSessionSummarize {
   private static readonly MAX_ITERATIONS = 200;
 
-  entries: IterationRecapEntry[] = [];
+  entries: IterationSummarizeEntry[] = [];
   answers: SessionAnswers | null = null;
   overview: SessionOverview | null = null;
-  sessionHead: IterationRecapLink | null = null;
+  sessionHead: IterationSummarizeLink | null = null;
   cursor: number | null = null;
 
   private readonly recordedTurnIds = new Set<string>();
   private pendingStart: RepoSnapshot | null = null;
 
   constructor(
-    private readonly repos: RecapRepos,
-    private readonly files: RecapSessionFiles,
+    private readonly repos: SummarizeRepos,
+    private readonly files: SummarizeSessionFiles,
   ) {}
 
   async noteTurnStart(): Promise<void> {
     this.pendingStart = await this.repos.snapshot();
   }
 
-  /** Records every finished turn not seen yet. Repo lookups run only for the newest turn, whose start this recap saw. */
+  /** Records every finished turn not seen yet. Repo lookups run only for the newest turn, whose start this summarize saw. */
   async record(turns: readonly OpencodeTurn[], nowMs: number): Promise<boolean> {
     let isChanged = false;
     const newestTurnId = turns.at(-1)?.turnId;
@@ -51,7 +51,7 @@ export class OpencodeSessionRecap {
       }
       const start = turn.turnId === newestTurnId ? this.pendingStart : null;
       const resolved = start ? await this.repos.resolve(entry, this.scopeOf(turn, start)) : entry;
-      this.entries = [...this.entries, resolved].slice(-OpencodeSessionRecap.MAX_ITERATIONS);
+      this.entries = [...this.entries, resolved].slice(-OpencodeSessionSummarize.MAX_ITERATIONS);
       await this.recordQuestion(turn);
       isChanged = true;
     }
@@ -73,13 +73,13 @@ export class OpencodeSessionRecap {
     }
   }
 
-  selected(): IterationRecapEntry | undefined {
-    return RecapCursor.selected(this.entries, this.cursor);
+  selected(): IterationSummarizeEntry | undefined {
+    return SummarizeCursor.selected(this.entries, this.cursor);
   }
 
   /** Applies a `/summarize` word (`prev`, `next`, `last`, `<n>`, or empty for the current one). */
   moveCursor(word: string): void {
-    this.cursor = word === '' ? this.cursor : RecapCursor.parse(word, this.entries, this.cursor);
+    this.cursor = word === '' ? this.cursor : SummarizeCursor.parse(word, this.entries, this.cursor);
   }
 
   renderOverview(): Promise<string> {
@@ -97,7 +97,7 @@ export class OpencodeSessionRecap {
     }
   }
 
-  private entryOf(turn: OpencodeTurn, nowMs: number): IterationRecapEntry | null {
+  private entryOf(turn: OpencodeTurn, nowMs: number): IterationSummarizeEntry | null {
     const recorder = new IterationRecorder();
     recorder.start(turn.turnId, turn.prompt, turn.startedAt);
     for (const skill of turn.skills) {
@@ -114,7 +114,7 @@ export class OpencodeSessionRecap {
     );
   }
 
-  private scopeOf(turn: OpencodeTurn, start: RepoSnapshot): IterationRecapScope {
+  private scopeOf(turn: OpencodeTurn, start: RepoSnapshot): IterationSummarizeScope {
     return {
       touchedDirectories: ArtifactExtractor.candidateDirectories(turn.calls),
       changedDirectories: ArtifactExtractor.changeDirectories(turn.calls),

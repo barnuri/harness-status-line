@@ -18,7 +18,7 @@ scripts/
   animated-preview.ts — Generates docs/animated.html (CSS-animated cycling preview)
   demo.sh           — Shell script used by VHS to record docs/demo.gif
 claude-mods/
-  summarize/        — Claude Code mod (function hooks): per-iteration recap band + /summarize pane, both shown only after /summarize; `claude plugin test` runs its tests/, bun skips them (bunfig.toml test root)
+  summarize/        — Claude Code mod (function hooks): per-iteration summarize band + /summarize pane, both shown only after /summarize; `claude plugin test` runs its tests/, bun skips them (bunfig.toml test root)
 tests/
   summarize/        — bun unit tests for the mod's pure classes
   statusParser.test.ts

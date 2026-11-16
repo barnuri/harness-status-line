@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
-import { RecapSummarizer } from '../../claude-mods/summarize/hooks/recapSummarizer.ts';
-import type { IterationRecapEntry } from '../../claude-mods/summarize/types';
+import { SummarizeSummarizer } from '../../claude-mods/summarize/hooks/summarizeSummarizer.ts';
+import type { IterationSummarizeEntry } from '../../claude-mods/summarize/types';
 
-const entry: IterationRecapEntry = {
+const entry: IterationSummarizeEntry = {
   index: 1,
   turnId: 't1',
   prompt: 'open a PR',
@@ -28,16 +28,16 @@ const entry: IterationRecapEntry = {
 
 const NO_FACTS = { toolCounts: {}, artifacts: { ...entry.artifacts, files: [], commits: [], pullRequests: [] } };
 
-describe('RecapSummarizer.heuristic', () => {
+describe('SummarizeSummarizer.heuristic', () => {
   it('uses the first prose sentence, skipping code and markdown', () => {
-    const answer = '## Result\n```ts\nconst x = 1\n```\n**Added** the band. It shows the recap.';
+    const answer = '## Result\n```ts\nconst x = 1\n```\n**Added** the band. It shows the summarize.';
 
-    expect(RecapSummarizer.heuristic(answer, NO_FACTS)).toBe('Result Added the band.');
+    expect(SummarizeSummarizer.heuristic(answer, NO_FACTS)).toBe('Result Added the band.');
   });
 
   it('falls back to a placeholder when the turn has no prose answer and no facts', () => {
-    expect(RecapSummarizer.heuristic('', NO_FACTS)).toBe('(no final answer)');
-    expect(RecapSummarizer.heuristic('```\ncode\n```', NO_FACTS)).toBe('(no final answer)');
+    expect(SummarizeSummarizer.heuristic('', NO_FACTS)).toBe('(no final answer)');
+    expect(SummarizeSummarizer.heuristic('```\ncode\n```', NO_FACTS)).toBe('(no final answer)');
   });
 
   it('builds a deterministic line from the iteration facts when the answer has no prose', () => {
@@ -51,11 +51,11 @@ describe('RecapSummarizer.heuristic', () => {
       },
     };
 
-    expect(RecapSummarizer.heuristic('', facts)).toBe('Ran /cr, edited 1 file, committed abc1234, opened acme/web#4, 4 tool calls.');
+    expect(SummarizeSummarizer.heuristic('', facts)).toBe('Ran /cr, edited 1 file, committed abc1234, opened acme/web#4, 4 tool calls.');
   });
 
   it('clips long sentences', () => {
-    const summary = RecapSummarizer.heuristic('a'.repeat(300), NO_FACTS);
+    const summary = SummarizeSummarizer.heuristic('a'.repeat(300), NO_FACTS);
 
     expect(summary).toHaveLength(160);
     expect(summary.endsWith('…')).toBe(true);

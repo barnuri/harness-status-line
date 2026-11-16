@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { OpencodeToolCall } from '../src/opencode/summarize/opencodeToolCall.ts';
 import { OpencodeTurns } from '../src/opencode/summarize/opencodeTurns.ts';
-import { OpencodeSessionRecap } from '../src/opencode/summarize/opencodeSessionRecap.ts';
-import { RecapText } from '../claude-mods/summarize/hooks/recapText.ts';
-import type { RecapRepos } from '../claude-mods/summarize/hooks/recapRepos.ts';
-import type { RecapSessionFiles } from '../claude-mods/summarize/hooks/recapSessionFiles.ts';
-import type { IterationRecapEntry, IterationRecapScope } from '../claude-mods/summarize/types';
+import { OpencodeSessionSummarize } from '../src/opencode/summarize/opencodeSessionSummarize.ts';
+import { SummarizeText } from '../claude-mods/summarize/hooks/summarizeText.ts';
+import type { SummarizeRepos } from '../claude-mods/summarize/hooks/summarizeRepos.ts';
+import type { SummarizeSessionFiles } from '../claude-mods/summarize/hooks/summarizeSessionFiles.ts';
+import type { IterationSummarizeEntry, IterationSummarizeScope } from '../claude-mods/summarize/types';
 import type { OpencodeSessionMessage } from '../src/opencode/summarize/types.ts';
 
 const writePart = {
@@ -81,91 +81,91 @@ describe('OpencodeTurns.split()', () => {
   });
 });
 
-describe('OpencodeSessionRecap', () => {
+describe('OpencodeSessionSummarize', () => {
   const fakes = () => {
-    const resolved: IterationRecapScope[] = [];
+    const resolved: IterationSummarizeScope[] = [];
     const repos = {
       sessionDirectory: '/repo',
       snapshot: async () => ({ root: '/repo', state: 'before' }),
-      resolve: async (entry: IterationRecapEntry, scope: IterationRecapScope) => {
+      resolve: async (entry: IterationSummarizeEntry, scope: IterationSummarizeScope) => {
         resolved.push(scope);
         return { ...entry, artifacts: { ...entry.artifacts, repos: ['repo'] } };
       },
       root: async () => null,
       headCommit: async () => null,
-    } as unknown as RecapRepos;
+    } as unknown as SummarizeRepos;
     const overview = { slug: '2026-11-12-x', folder: '/repo/agent-spec/2026-11-12-x', html: '/repo/agent-spec/2026-11-12-x/session-overview.html' };
     const refreshed: number[] = [];
     const exchanges: { folder: string; prompt: string; answer: string }[] = [];
     const files = {
       answers: async () => null,
       overview: async () => overview,
-      refreshOverview: async (list: readonly IterationRecapEntry[]) => (refreshed.push(list.length), overview),
+      refreshOverview: async (list: readonly IterationSummarizeEntry[]) => (refreshed.push(list.length), overview),
       recordExchange: async (folder: string, prompt: string, answer: string) => void exchanges.push({ folder, prompt, answer }),
-    } as unknown as RecapSessionFiles;
-    return { recap: new OpencodeSessionRecap(repos, files), resolved, refreshed, overview, exchanges };
+    } as unknown as SummarizeSessionFiles;
+    return { summarize: new OpencodeSessionSummarize(repos, files), resolved, refreshed, overview, exchanges };
   };
 
   it('records history turns once, without repo lookups', async () => {
-    const { recap, resolved } = fakes();
+    const { summarize, resolved } = fakes();
     const turns = OpencodeTurns.split([user('m1', 'first', 0), assistant([writePart], 10)], false);
 
-    expect(await recap.record(turns, 20)).toBe(true);
-    expect(await recap.record(turns, 30)).toBe(false);
-    expect(recap.entries.map((entry) => entry.index)).toEqual([1]);
-    expect(recap.entries[0]?.artifacts.files).toEqual(['/repo/a.ts']);
+    expect(await summarize.record(turns, 20)).toBe(true);
+    expect(await summarize.record(turns, 30)).toBe(false);
+    expect(summarize.entries.map((entry) => entry.index)).toEqual([1]);
+    expect(summarize.entries[0]?.artifacts.files).toEqual(['/repo/a.ts']);
     expect(resolved).toHaveLength(0);
   });
 
   it('resolves repos for the newest turn after its start was seen', async () => {
-    const { recap, resolved } = fakes();
-    await recap.noteTurnStart();
+    const { summarize, resolved } = fakes();
+    await summarize.noteTurnStart();
 
-    await recap.record(OpencodeTurns.split([user('m1', 'first', 0), assistant([writePart], 10)], false), 20);
+    await summarize.record(OpencodeTurns.split([user('m1', 'first', 0), assistant([writePart], 10)], false), 20);
 
     expect(resolved[0]).toMatchObject({ startRoot: '/repo', startState: 'before', changedDirectories: ['/repo'] });
-    expect(recap.entries[0]?.artifacts.repos).toEqual(['repo']);
+    expect(summarize.entries[0]?.artifacts.repos).toEqual(['repo']);
   });
 
   it('refreshes the overview page only when a turn finished, and keeps the slug folder either way', async () => {
-    const { recap, refreshed, overview } = fakes();
+    const { summarize, refreshed, overview } = fakes();
 
-    await recap.refreshFiles(false);
-    expect(recap.overview).toEqual(overview);
+    await summarize.refreshFiles(false);
+    expect(summarize.overview).toEqual(overview);
     expect(refreshed).toEqual([]);
 
-    await recap.refreshFiles(true);
+    await summarize.refreshFiles(true);
     expect(refreshed).toEqual([0]);
   });
 
   it('records a card for each finished turn whose prompt has a question', async () => {
-    const { recap, exchanges, overview } = fakes();
+    const { summarize, exchanges, overview } = fakes();
     const turns = OpencodeTurns.split(
       [user('m1', 'Which DB?', 0), assistant([writePart], 10), user('m2', 'Run the tests', 11), assistant([writePart], 20)],
       false,
     );
 
-    await recap.record(turns, 30);
+    await summarize.record(turns, 30);
 
     expect(exchanges).toEqual([{ folder: overview.folder, prompt: 'Which DB?', answer: turns[0]?.answer ?? '' }]);
   });
 
   it('moves the cursor with /summarize words', async () => {
-    const { recap } = fakes();
-    await recap.record(
+    const { summarize } = fakes();
+    await summarize.record(
       OpencodeTurns.split([user('m1', 'a', 0), assistant([], 1), user('m2', 'b', 2), assistant([], 3)], false),
       4,
     );
 
-    recap.moveCursor('1');
+    summarize.moveCursor('1');
 
-    expect(recap.selected()?.index).toBe(1);
+    expect(summarize.selected()?.index).toBe(1);
   });
 });
 
-describe('RecapText.commandText() label-only mode', () => {
+describe('SummarizeText.commandText() label-only mode', () => {
   it('shows link labels instead of URLs', () => {
-    const entry: IterationRecapEntry = {
+    const entry: IterationSummarizeEntry = {
       index: 1,
       turnId: 't',
       prompt: 'p',
@@ -183,7 +183,7 @@ describe('RecapText.commandText() label-only mode', () => {
     };
 
     const head = { label: 'abc123 fix', url: 'https://github.com/barnuri/llm-hub/commit/abc123', repo: 'llm-hub' };
-    const text = RecapText.commandText(entry, [entry], '/repo', null, false, head, true);
+    const text = SummarizeText.commandText(entry, [entry], '/repo', null, false, head, true);
 
     expect(text).toContain('llm-hub');
     expect(text).toContain('abc123 fix');

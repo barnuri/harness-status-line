@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'bun:test';
-import { RecapErrorLog } from '../../claude-mods/summarize/hooks/recapErrorLog.ts';
-import { RecapSessionFiles } from '../../claude-mods/summarize/hooks/recapSessionFiles.ts';
-import type { RecapHost } from '../../claude-mods/summarize/hooks/recapHost.ts';
-import type { RecapRepos } from '../../claude-mods/summarize/hooks/recapRepos.ts';
+import { SummarizeErrorLog } from '../../claude-mods/summarize/hooks/summarizeErrorLog.ts';
+import { SummarizeSessionFiles } from '../../claude-mods/summarize/hooks/summarizeSessionFiles.ts';
+import type { SummarizeHost } from '../../claude-mods/summarize/hooks/summarizeHost.ts';
+import type { SummarizeRepos } from '../../claude-mods/summarize/hooks/summarizeRepos.ts';
 
 const FOLDER = '/work/web/agent-spec/2026-11-08-db';
 const PATH = `${FOLDER}/overview.md`;
 
 /** An in-memory host: files live in `files`, the folder exists when `folders` has it. */
 function fakeFiles(files: Map<string, string>, folders: string[] = [FOLDER]) {
-  const host: RecapHost = {
+  const host: SummarizeHost = {
     run: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
     exists: async path => files.has(path) || folders.includes(path),
     read: async path => files.get(path) ?? '',
@@ -23,10 +23,10 @@ function fakeFiles(files: Map<string, string>, folders: string[] = [FOLDER]) {
     sessionId: async () => 's1',
     cwd: async () => '/work/web',
   };
-  return new RecapSessionFiles(host, null as unknown as RecapRepos, new RecapErrorLog(host));
+  return new SummarizeSessionFiles(host, null as unknown as SummarizeRepos, new SummarizeErrorLog(host));
 }
 
-describe('RecapSessionFiles.recordExchange', () => {
+describe('SummarizeSessionFiles.recordExchange', () => {
   it('creates overview.md with the session header and the first card when the file is missing', async () => {
     const files = new Map<string, string>();
     await fakeFiles(files).recordExchange(FOLDER, 'Which DB should we use?', 'Use Postgres.');
@@ -61,7 +61,7 @@ describe('RecapSessionFiles.recordExchange', () => {
   });
 
   it('logs a failed write and does not throw', async () => {
-    const failing = new RecapSessionFiles({
+    const failing = new SummarizeSessionFiles({
       run: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
       exists: async () => true,
       read: async () => '',
@@ -74,7 +74,7 @@ describe('RecapSessionFiles.recordExchange', () => {
       now: async () => 1_000,
       sessionId: async () => 's1',
       cwd: async () => '/work/web',
-    }, null as unknown as RecapRepos, new RecapErrorLog({
+    }, null as unknown as SummarizeRepos, new SummarizeErrorLog({
       run: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
       exists: async () => false,
       read: async () => '',

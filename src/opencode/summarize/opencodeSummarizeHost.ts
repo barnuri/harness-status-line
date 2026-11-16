@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { RecapHost } from '../../../claude-mods/summarize/hooks/recapHost.ts';
+import type { SummarizeHost } from '../../../claude-mods/summarize/hooks/summarizeHost.ts';
 
-/** RecapHost for opencode: Bun processes with a kill timeout, plain file system calls, and the selected session. */
-export class OpencodeRecapHost implements RecapHost {
+/** SummarizeHost for opencode: Bun processes with a kill timeout, plain file system calls, and the selected session. */
+export class OpencodeSummarizeHost implements SummarizeHost {
   constructor(
     private readonly sessionIdOf: () => string,
     private readonly directoryOf: () => string,

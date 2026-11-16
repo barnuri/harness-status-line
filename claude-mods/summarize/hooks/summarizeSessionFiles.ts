@@ -3,14 +3,14 @@ import type { ViewerRoute } from './viewerRoute'
 import { OverviewFacts } from './overviewFacts'
 import { OverviewBoard } from './overviewBoard'
 import { OverviewReader } from './overviewReader'
-import { RecapErrorLog } from './recapErrorLog'
+import { SummarizeErrorLog } from './summarizeErrorLog'
 
-import type { RecapHost } from './recapHost'
-import type { RecapRepos } from './recapRepos'
-import type { IterationRecapEntry, IterationRecapLink, SessionAnswers, SessionOverview } from '../types'
+import type { SummarizeHost } from './summarizeHost'
+import type { SummarizeRepos } from './summarizeRepos'
+import type { IterationSummarizeEntry, IterationSummarizeLink, SessionAnswers, SessionOverview } from '../types'
 
 /** The session's `agent-spec/<slug>/` folder: its `overview.md` answers, `overview-facts.json` and overview page. */
-export class RecapSessionFiles {
+export class SummarizeSessionFiles {
   private static readonly SLUG_DIRECTORY = '.claude/session-slugs'
   /** Holds the absolute `agent-spec/<slug>` folder the session-slug skill resolved, one file per session id. */
   private static readonly SLUG_FOLDER_DIRECTORY = '.claude/session-slug-folders'
@@ -23,9 +23,9 @@ export class RecapSessionFiles {
   private readonly opener: FileOpener
 
   public constructor(
-    private readonly host: RecapHost,
-    private readonly repos: RecapRepos,
-    private readonly errors: RecapErrorLog,
+    private readonly host: SummarizeHost,
+    private readonly repos: SummarizeRepos,
+    private readonly errors: SummarizeErrorLog,
     route: Pick<ViewerRoute, 'isMobilePanelFocused'> | null = null,
   ) {
     this.opener = new FileOpener(host, errors, route)
@@ -35,13 +35,13 @@ export class RecapSessionFiles {
    * The session's slug folder: the one session-slug published, else the `agent-spec/<slug>/` folder of
    * the newest file the session wrote there. Null when neither exists.
    */
-  public async overview(list: readonly IterationRecapEntry[]): Promise<SessionOverview | null> {
+  public async overview(list: readonly IterationSummarizeEntry[]): Promise<SessionOverview | null> {
     const folder = (await this.publishedSlugFolder(list)) ?? (await this.writtenSlugFolder(list))
     if (folder === null) {
       return null
     }
 
-    return { slug: folder.slice(folder.lastIndexOf('/') + 1), folder, html: `${folder}/${RecapSessionFiles.OVERVIEW_HTML_FILE}` }
+    return { slug: folder.slice(folder.lastIndexOf('/') + 1), folder, html: `${folder}/${SummarizeSessionFiles.OVERVIEW_HTML_FILE}` }
   }
 
   /**
@@ -66,12 +66,12 @@ export class RecapSessionFiles {
         : `> Session: ${folder.slice(folder.lastIndexOf('/') + 1)}\n\n${OverviewBoard.HEADER}\n\n${card}`
       await this.host.write(path, next)
     } catch (error) {
-      void this.errors.log(`exchange write failed for ${folder}: ${RecapErrorLog.describe(error)}`)
+      void this.errors.log(`exchange write failed for ${folder}: ${SummarizeErrorLog.describe(error)}`)
     }
   }
 
   /** At a turn end: writes `overview-facts.json` and renders `session-overview.html` in the slug folder. */
-  public async refreshOverview(list: readonly IterationRecapEntry[], sessionHead: IterationRecapLink | null): Promise<SessionOverview | null> {
+  public async refreshOverview(list: readonly IterationSummarizeEntry[], sessionHead: IterationSummarizeLink | null): Promise<SessionOverview | null> {
     const overview = await this.overview(list)
     if (overview !== null && (await this.writeOverviewFacts(overview.folder, list, sessionHead))) {
       await this.render(overview.folder)
@@ -81,7 +81,7 @@ export class RecapSessionFiles {
   }
 
   /** The session's Q&A from the published `overview.md`, else the newest one the session wrote. Null when none exists. */
-  public async answers(list: readonly IterationRecapEntry[]): Promise<SessionAnswers | null> {
+  public async answers(list: readonly IterationSummarizeEntry[]): Promise<SessionAnswers | null> {
     const path = (await this.publishedOverviewPath(list)) ?? (await this.sessionAnswersPath(list))
     if (path === null) {
       return null
@@ -89,7 +89,7 @@ export class RecapSessionFiles {
     try {
       return OverviewReader.parse(await this.host.read(path), path)
     } catch (error) {
-      void this.errors.log(`answers read failed for ${path}: ${RecapErrorLog.describe(error)}`)
+      void this.errors.log(`answers read failed for ${path}: ${SummarizeErrorLog.describe(error)}`)
 
       return null
     }
@@ -99,7 +99,7 @@ export class RecapSessionFiles {
    * The folder `agent-spec/<slug>/` the session-slug skill published for this session, in the session
    * repo or a repo the session edited. Null when the session published none.
    */
-  public async publishedSlugFolder(list: readonly IterationRecapEntry[]): Promise<string | null> {
+  public async publishedSlugFolder(list: readonly IterationSummarizeEntry[]): Promise<string | null> {
     try {
       const home = await this.host.home()
       if (home === undefined) {
@@ -109,7 +109,7 @@ export class RecapSessionFiles {
       if (folder !== null) {
         return folder
       }
-      const slugFile = `${home}/${RecapSessionFiles.SLUG_DIRECTORY}/${await this.host.sessionId()}`
+      const slugFile = `${home}/${SummarizeSessionFiles.SLUG_DIRECTORY}/${await this.host.sessionId()}`
       if (!(await this.host.exists(slugFile))) {
         return null
       }
@@ -131,7 +131,7 @@ export class RecapSessionFiles {
       // refresh creates it with the facts and the overview page.
       return `${roots[0] ?? this.repos.sessionDirectory}/agent-spec/${slug}`
     } catch (error) {
-      void this.errors.log(`published slug lookup failed: ${RecapErrorLog.describe(error)}`)
+      void this.errors.log(`published slug lookup failed: ${SummarizeErrorLog.describe(error)}`)
 
       return null
     }
@@ -139,7 +139,7 @@ export class RecapSessionFiles {
 
   /** The folder the session-slug skill recorded for this session, when it still exists. */
   private async recordedSlugFolder(home: string): Promise<string | null> {
-    const folderFile = `${home}/${RecapSessionFiles.SLUG_FOLDER_DIRECTORY}/${await this.host.sessionId()}`
+    const folderFile = `${home}/${SummarizeSessionFiles.SLUG_FOLDER_DIRECTORY}/${await this.host.sessionId()}`
     if (!(await this.host.exists(folderFile))) {
       return null
     }
@@ -151,7 +151,7 @@ export class RecapSessionFiles {
    * Writes `overview-facts.json` into `folder`, built from the iterations and the session HEAD. Returns
    * false after logging the error when the write fails.
    */
-  public async writeOverviewFacts(folder: string, list: readonly IterationRecapEntry[], sessionHead: IterationRecapLink | null): Promise<boolean> {
+  public async writeOverviewFacts(folder: string, list: readonly IterationSummarizeEntry[], sessionHead: IterationSummarizeLink | null): Promise<boolean> {
     try {
       const document = OverviewFacts.build({
         slug: folder.slice(folder.lastIndexOf('/') + 1),
@@ -160,18 +160,18 @@ export class RecapSessionFiles {
         iterations: list,
         sessionHead,
       })
-      await this.host.write(`${folder}/${RecapSessionFiles.OVERVIEW_FACTS_FILE}`, OverviewFacts.serialize(document))
+      await this.host.write(`${folder}/${SummarizeSessionFiles.OVERVIEW_FACTS_FILE}`, OverviewFacts.serialize(document))
 
       return true
     } catch (error) {
-      void this.errors.log(`overview facts write failed for ${folder}: ${RecapErrorLog.describe(error)}`)
+      void this.errors.log(`overview facts write failed for ${folder}: ${SummarizeErrorLog.describe(error)}`)
 
       return false
     }
   }
 
   /** Writes the facts, renders `session-overview.html` in the slug folder, and opens it. Returns a one-line status. */
-  public async renderOverview(list: readonly IterationRecapEntry[], sessionHead: IterationRecapLink | null): Promise<string> {
+  public async renderOverview(list: readonly IterationSummarizeEntry[], sessionHead: IterationSummarizeLink | null): Promise<string> {
     const overview = await this.overview(list)
     if (overview === null) {
       return 'No slug folder for this session.'
@@ -212,7 +212,7 @@ export class RecapSessionFiles {
       return null
     }
     try {
-      const { exitCode, stdout, stderr } = await this.host.run(['python3', '-I', script, folder], { timeoutMs: RecapSessionFiles.RENDER_TIMEOUT_MS })
+      const { exitCode, stdout, stderr } = await this.host.run(['python3', '-I', script, folder], { timeoutMs: SummarizeSessionFiles.RENDER_TIMEOUT_MS })
       const html = stdout.trim()
       if (exitCode !== 0 || html === '') {
         void this.errors.log(`render_overview exited ${exitCode} for ${folder}: ${stderr.trim()}`)
@@ -222,17 +222,17 @@ export class RecapSessionFiles {
 
       return html
     } catch (error) {
-      void this.errors.log(`render_overview failed for ${folder}: ${RecapErrorLog.describe(error)}`)
+      void this.errors.log(`render_overview failed for ${folder}: ${SummarizeErrorLog.describe(error)}`)
 
       return null
     }
   }
 
   /** The `agent-spec/<slug>/` folder of the newest file the session wrote or rendered there that still exists. */
-  private async writtenSlugFolder(list: readonly IterationRecapEntry[]): Promise<string | null> {
+  private async writtenSlugFolder(list: readonly IterationSummarizeEntry[]): Promise<string | null> {
     const folders = list
       .flatMap(entry => [...entry.artifacts.files, ...(entry.artifacts.overviewFiles ?? [])])
-      .map(path => RecapSessionFiles.SLUG_FOLDER.exec(path)?.[1])
+      .map(path => SummarizeSessionFiles.SLUG_FOLDER.exec(path)?.[1])
       .filter((folder): folder is string => folder !== undefined)
     for (const folder of [...new Set(folders)].reverse()) {
       if (await this.host.exists(folder).catch(() => false)) {
@@ -244,7 +244,7 @@ export class RecapSessionFiles {
   }
 
   /** The newest `overview.md` the session wrote or rendered that exists on disk. */
-  private async sessionAnswersPath(list: readonly IterationRecapEntry[]): Promise<string | null> {
+  private async sessionAnswersPath(list: readonly IterationSummarizeEntry[]): Promise<string | null> {
     const paths = list
       .flatMap(entry => [...entry.artifacts.files, ...(entry.artifacts.overviewFiles ?? [])])
       .filter(path => OverviewReader.slugOf(path) !== null)
@@ -258,7 +258,7 @@ export class RecapSessionFiles {
   }
 
   /** The `overview.md` of the published slug folder, when that file exists. */
-  private async publishedOverviewPath(list: readonly IterationRecapEntry[]): Promise<string | null> {
+  private async publishedOverviewPath(list: readonly IterationSummarizeEntry[]): Promise<string | null> {
     const folder = await this.publishedSlugFolder(list)
     if (folder === null) {
       return null
@@ -274,7 +274,7 @@ export class RecapSessionFiles {
     if (home === undefined) {
       return null
     }
-    const script = `${home}/${RecapSessionFiles.SESSION_OVERVIEW_SCRIPT}`
+    const script = `${home}/${SummarizeSessionFiles.SESSION_OVERVIEW_SCRIPT}`
 
     return (await this.host.exists(script)) ? script : null
   }

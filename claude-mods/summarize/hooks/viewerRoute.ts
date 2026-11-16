@@ -1,6 +1,6 @@
-import type { RecapHost } from './recapHost'
+import type { SummarizeHost } from './summarizeHost'
 
-export type ViewerRouteHost = Pick<RecapHost, 'run' | 'read' | 'now' | 'home'> & { env(name: string): Promise<string | undefined> }
+export type ViewerRouteHost = Pick<SummarizeHost, 'run' | 'read' | 'now' | 'home'> & { env(name: string): Promise<string | undefined> }
 
 /** Decides whether a link opens in the herdr pane: a phone herdr-web client is attached and this pane is focused. */
 export class ViewerRoute {

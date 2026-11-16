@@ -9,7 +9,7 @@ const PANE = {
   component: 'Pane',
   requestId: 'summarize',
   props: {
-    title: 'Iteration recap',
+    title: 'Iteration summarize',
     isFocused: true,
     bodyColumns: 100,
     placement: 'dock',
@@ -161,7 +161,7 @@ test('browses between iterations with prev, next and latest', async ($, on) => {
   await ui.unmount()
 })
 
-test('/summarize jumps by number and answers with a text recap', async ($, on) => {
+test('/summarize jumps by number and answers with a text summarize', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
 
@@ -175,7 +175,7 @@ test('/summarize jumps by number and answers with a text recap', async ($, on) =
   expect(answer.text).toContain('https://github.com/acme/web/pull/42')
 })
 
-test('band shows the latest recap and hides on press', { options: { showBand: true } }, async ($, on) => {
+test('band shows the latest summarize and hides on press', { options: { showBand: true } }, async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   engineStubs(on)
 

@@ -81,7 +81,7 @@ Claude Code pipes `StatusJSON` on each refresh. Rate-limit and auth segments com
 
 ### Summarize mod
 
-[`claude-mods/summarize`](claude-mods/summarize) is a Claude Code mod (a function-hooks plugin). It recaps every iteration (one prompt → one finished turn) and lets you jump between earlier recaps.
+[`claude-mods/summarize`](claude-mods/summarize) is a Claude Code mod (a function-hooks plugin). It summarizes every iteration (one prompt → one finished turn) and lets you jump between earlier summarizes.
 
 The pane has two parts.
 
@@ -93,7 +93,7 @@ The pane has two parts.
 | skills | Every skill the engine expands (`skill.prompt`): typed as `/name`, called through the `Skill` tool, or preloaded into a subagent |
 | PRs | The open PR of the current branch in the session repo and every changed repo (`gh pr view <branch> --json number,url`, the same PR Claude Code's footer shows; skipped on `main` / `master` / `develop`, cached per branch once found), plus PRs created during the session: the engine's own `gitOperation.pr` on Bash results, `gh pr create` output, or an MCP `create_pull_request` tool |
 
-**Iteration** (below it) recaps the selected iteration. Summary and tools always show. The rest show only when they have content. Tool calls made inside subagents count toward the iteration that started them. Every row has its own color.
+**Iteration** (below it) summarizes the selected iteration. Summary and tools always show. The rest show only when they have content. Tool calls made inside subagents count toward the iteration that started them. Every row has its own color.
 
 | Row | Source |
 |---|---|
@@ -109,8 +109,8 @@ Recording runs from the start of the session, but nothing shows until you run `/
 
 It shows up in two places:
 
-- **Band above the prompt**: the latest recap in one line (summary), with `summary` and `×` buttons.
-- **`/summarize` pane**: the full recap, with an icon footer pinned to the bottom: `p: ◀` previous, `n: ▶` next, `l: ⏭` latest, `h: ☰` history and `i: ✎` prompt. History and prompt are collapsed by default. Click an icon, or focus the pane (click it, or ctrl+x tab) and press its key. Mods can't bind keys that work from the prompt itself. After `/summarize`, it reopens after each new iteration. Close it (`✕` or ctrl+x x) and it stays closed until you run `/summarize` again. When it reopens by itself, Claude Code places the pane only on terminals at least 144 columns wide. Narrower terminals hold it until you run `/summarize`.
+- **Band above the prompt**: the latest summarize in one line (summary), with `summary` and `×` buttons.
+- **`/summarize` pane**: the full summarize, with an icon footer pinned to the bottom: `p: ◀` previous, `n: ▶` next, `l: ⏭` latest, `h: ☰` history and `i: ✎` prompt. History and prompt are collapsed by default. Click an icon, or focus the pane (click it, or ctrl+x tab) and press its key. Mods can't bind keys that work from the prompt itself. After `/summarize`, it reopens after each new iteration. Close it (`✕` or ctrl+x x) and it stays closed until you run `/summarize` again. When it reopens by itself, Claude Code places the pane only on terminals at least 144 columns wide. Narrower terminals hold it until you run `/summarize`.
 
 | Command | Effect |
 |---|---|
@@ -134,7 +134,7 @@ Captured from a live Claude Code 2.1.287 session (tmux, scratch repo `demo-shop`
 Band after iteration 2 (Haiku summary, counts, open question):
 
 ```text
-↻ #2/2 5s · Created plan.md with 3 unit test steps and asked about test runner preference. · 1 file · 1 plan · 1 open ?   [ recap ][ × ]
+↻ #2/2 5s · Created plan.md with 3 unit test steps and asked about test runner preference. · 1 file · 1 plan · 1 open ?   [ summarize ][ × ]
 ```
 
 The capture below predates three changes: the rename (it shows the old command name `/iterations`, which now runs as `/summarize`), the always-shown rows, and the collapsed prompt and history.
@@ -200,7 +200,7 @@ PR, review and plan-mode rows appear the same way when a turn produces them. The
 | `turn.start` | Starts a draft with the prompt and start time |
 | `skill.prompt` | Records every skill the engine expands for the current iteration |
 | `tool.call` | Records each tool call with its input and result text, subagent calls included |
-| `turn.complete` | Builds the recap, resolves local git roots and remotes, then stores it in `$.state` (kept across hot reloads, capped at 200). With `summarizer: haiku`, it asks Haiku for the summary in the background (8 s timeout, low effort) |
+| `turn.complete` | Builds the summarize, resolves local git roots and remotes, then stores it in `$.state` (kept across hot reloads, capped at 200). With `summarizer: haiku`, it asks Haiku for the summary in the background (8 s timeout, low effort) |
 | `ui.render` | Draws the `Pane` and the `AbovePrompt` band |
 | `command.run` | Serves `/summarize` and switches the band and auto-reopening on for the rest of the session |
 
@@ -398,17 +398,17 @@ requested model has no fixed price.
 - Segments rebuild at most once a second. llm-hub data arrives in the background and shows on the
   next render.
 
-### Summarize recap (opencode)
+### Summarize (opencode)
 
 `opencode-summarize/mod.ts` is the summarize Claude mod as a [herdr-mods](https://github.com/barnuri/herdr-mods)
-mod. Each opencode session's recap runs in a herdr pane beside opencode. The pane reuses the mod's
-own `RecapView` with its buttons and hotkeys. The pane opens after a new turn, and `/summarize`
+mod. Each opencode session's summarize runs in a herdr pane beside opencode. The pane reuses the mod's
+own `SummarizeView` with its buttons and hotkeys. The pane opens after a new turn, and `/summarize`
 reopens it. `/summarize overview` writes the session overview page. List the mod in herdr-mods'
 `mods` option.
 
-It shares the mod's logic: the extractor, the recorder, `RecapRepos` (git and `gh`), `RecapSessionFiles`
-(slug folder, `overview.md`, `overview-facts.json`, the overview page) and `RecapText`.
-`opencode-summarize/tui.ts` is an older plugin that draws the recap inside opencode (sidebar, panel,
+It shares the mod's logic: the extractor, the recorder, `SummarizeRepos` (git and `gh`), `SummarizeSessionFiles`
+(slug folder, `overview.md`, `overview-facts.json`, the overview page) and `SummarizeText`.
+`opencode-summarize/tui.ts` is an older plugin that draws the summarize inside opencode (sidebar, panel,
 band). It is not enabled by default.
 
 ## Development
