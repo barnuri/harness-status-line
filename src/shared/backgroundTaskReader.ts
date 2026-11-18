@@ -9,6 +9,8 @@ export interface BackgroundCounts {
   readonly commands: number;
   readonly agents: number;
   readonly monitors: number;
+  /** Orch loops. Only the opencode status line counts them; Claude Code sessions leave this unset. */
+  readonly loops?: number;
 }
 
 interface OpenItem {

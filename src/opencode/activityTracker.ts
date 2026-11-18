@@ -1,8 +1,6 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 import type { ActivityState } from '../types.ts';
-import type { OpencodeDataEvent, OpencodeTuiSlice } from './types.ts';
+import { OrchStateReader } from './orchStateReader.ts';
+import type { OpencodeDataEvent, OpencodeTuiSlice, OrchWork } from './types.ts';
 
 /**
  * Live activity of an opencode 2 session, read from the TUI's own state on every call. The session
@@ -19,49 +17,43 @@ export class OpencodeActivityTracker {
     'session.execution.interrupted': 'interrupted',
   };
 
-  private static readonly ORCH_TTL_SECS = 120;
   private static readonly ORCH_CACHE_MS = 2000;
-  private static readonly SAFE_ID = /^[A-Za-z0-9._-]+$/;
 
   private readonly outcomes = new Map<string, ActivityState>();
-  private readonly orchCache = new Map<string, { readAtMs: number; summary: string | null }>();
+  private readonly orchCache = new Map<string, { readAtMs: number; work: OrchWork | null }>();
 
   constructor(
     private readonly api: OpencodeTuiSlice,
-    private readonly orchDir: string = path.join(os.homedir(), '.harness-orch', 'activity'),
+    private readonly orchReader: OrchStateReader = new OrchStateReader(),
     private readonly now: () => number = Date.now,
   ) {}
 
   /**
-   * Summary of the orch work (agents, loops, monitors) of a session, or null when orch reports nothing
-   * running. Reads `<orchDir>/<session>.json`, cached for 2 s, never throws. A file older than 120 s is inactive.
+   * The orch work of a session, or null when no run of it has nodes running. Cached for 2 s.
    */
-  orchSummary(sessionId: string | undefined): string | null {
-    if (!sessionId || !OpencodeActivityTracker.SAFE_ID.test(sessionId)) {
+  orch(sessionId: string | undefined): OrchWork | null {
+    if (!sessionId) {
       return null;
     }
     const nowMs = this.now();
     const hit = this.orchCache.get(sessionId);
     if (hit && nowMs - hit.readAtMs < OpencodeActivityTracker.ORCH_CACHE_MS) {
-      return hit.summary;
+      return hit.work;
     }
-    const summary = this.readOrch(sessionId, nowMs);
-    this.orchCache.set(sessionId, { readAtMs: nowMs, summary });
-    return summary;
+    const work = this.orchReader.read(sessionId);
+    this.orchCache.set(sessionId, { readAtMs: nowMs, work });
+    return work;
   }
 
-  private readOrch(sessionId: string, nowMs: number): string | null {
-    try {
-      const data = JSON.parse(fs.readFileSync(path.join(this.orchDir, `${sessionId}.json`), 'utf8')) as Record<string, unknown>;
-      const updated = typeof data.updated_at === 'number' ? data.updated_at : 0;
-      if (data.active !== true || nowMs / 1000 - updated > OpencodeActivityTracker.ORCH_TTL_SECS) {
-        return null;
-      }
-      const summary = typeof data.summary === 'string' ? data.summary.trim() : '';
-      return summary || 'orch running';
-    } catch {
-      return null;
+  /** Child sessions of the session that are running now, which are the opencode agents it started. */
+  agents(sessionId: string | undefined): number {
+    if (!sessionId) {
+      return 0;
     }
+    const children = this.call(() => this.api.data?.session?.family?.(sessionId)) ?? [];
+    return children.filter(
+      (id) => id !== sessionId && this.call(() => this.api.data?.session?.status?.(id)) === OpencodeActivityTracker.RUNNING_STATUS,
+    ).length;
   }
 
   /** Starts listening for turn outcomes. Returns the unsubscribe function. */

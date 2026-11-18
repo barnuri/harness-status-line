@@ -30,6 +30,17 @@ export interface OpencodeModel {
   };
 }
 
+/** The orch work of one session: nodes of its running runs, plus the loops and monitors those runs own. */
+export interface OrchWork {
+  readonly running: number;
+  readonly done: number;
+  readonly total: number;
+  readonly loops: number;
+  readonly monitors: number;
+  /** The title of the session's run (or its id when untitled), shown as run info. */
+  readonly runTitle: string | null;
+}
+
 /** One opencode 2 data-bus event, as `api.data.listen` delivers it. */
 export interface OpencodeDataEvent {
   readonly details?: {

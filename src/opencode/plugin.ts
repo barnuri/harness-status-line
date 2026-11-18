@@ -7,6 +7,9 @@ import { OpencodeStateReader } from './opencodeStateReader.ts';
 import { OpencodeStatusRenderer } from './opencodeStatusRenderer.ts';
 import { OpencodeActivityTracker } from './activityTracker.ts';
 import { ActivitySegment } from '../shared/activitySegment.ts';
+import { OpencodeJobReader } from './jobStateReader.ts';
+import { JobSegment } from '../shared/jobSegment.ts';
+import { BackgroundTaskSegment } from '../shared/backgroundTaskSegment.ts';
 import { ConfigManager } from '../configManager.ts';
 import type { ActivityState, Config, Segment } from '../types.ts';
 import type { OpencodeTuiSlice } from './types.ts';
@@ -45,6 +48,9 @@ class OpencodeStatusLinePlugin {
   private readonly stateReader = new OpencodeStateReader();
   private readonly renderer = new OpencodeStatusRenderer();
   private readonly activitySegment = new ActivitySegment();
+  private readonly backgroundSegment = new BackgroundTaskSegment();
+  private readonly jobReader = new OpencodeJobReader();
+  private readonly jobSegment = new JobSegment();
   private readonly activityTracker: OpencodeActivityTracker;
   private readonly config: Config = new ConfigManager().load();
   private readonly revision: RevisionStore;
@@ -58,7 +64,7 @@ class OpencodeStatusLinePlugin {
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private activityTimer: ReturnType<typeof setInterval> | undefined;
   private stopActivityListen: (() => void) | undefined;
-  private shownActivity: string | null = null;
+  private shownLive: string | null = null;
 
   // The host's store is the reactive source: a signal from this repo's own solid-js copy is not tracked by the host.
   constructor(private readonly context: PluginContext) {
@@ -66,15 +72,15 @@ class OpencodeStatusLinePlugin {
     this.segments = this.readCache();
     this.activityTracker = new OpencodeActivityTracker(context);
     this.stopActivityListen = this.activityTracker.start();
-    // Redraws each spinner frame while the session works, and once on every state change otherwise.
+    // Redraws each spinner frame while the session works or orch runs, and once on every state change otherwise.
     this.activityTimer = setInterval(() => {
       try {
         const routeId = this.activityTracker.routeSessionId();
         const activity = this.activityTracker.current(routeId);
-        const orch = activity === 'idle' ? this.activityTracker.orchSummary(routeId) : null;
-        const shown = orch ? `idle+orch:${orch}` : activity;
-        const changed = shown !== this.shownActivity;
-        this.shownActivity = shown;
+        const orch = this.activityTracker.orch(routeId);
+        const shown = JSON.stringify([activity, orch, this.jobReader.read(routeId)]);
+        const changed = shown !== this.shownLive;
+        this.shownLive = shown;
         if (changed || orch || (activity && ActivitySegment.isAnimated(activity))) {
           this.bumpRevision();
         }
@@ -137,7 +143,7 @@ class OpencodeStatusLinePlugin {
 
   private renderSafely(sessionId: string | undefined): JSX.Element | null {
     try {
-      return this.renderer.render([...this.activitySegments(sessionId), ...this.currentSegments(sessionId)]);
+      return this.renderer.render([...this.liveSegments(sessionId), ...this.currentSegments(sessionId)]);
     } catch (err) {
       this.logFailure(err);
       return null;
@@ -145,17 +151,35 @@ class OpencodeStatusLinePlugin {
   }
 
   // Computed in this process, not in segmentsCli, so the spinner advances every frame instead of every rebuild.
-  private activitySegments(sessionId: string | undefined): Segment[] {
+  // Activity and orch come first, then the counts of running agents, loops and monitors. Each shows only when set.
+  private liveSegments(sessionId: string | undefined): Segment[] {
     const id = sessionId ?? this.activityTracker.routeSessionId();
+    const { colors } = this.config;
+    const segments: Segment[] = [];
     const activity = this.activityTracker.current(id);
-    if (!activity || !this.config.segments.activity) {
-      return [];
+    const orch = this.activityTracker.orch(id);
+    if (this.config.segments.activity) {
+      if (activity) {
+        segments.push(this.activitySegment.build(activity, colors));
+      }
+      if (orch) {
+        segments.push(this.activitySegment.buildOrch(orch, colors));
+        if (orch.runTitle) {
+          segments.push(this.activitySegment.buildRun(orch.runTitle, colors));
+        }
+      }
     }
-    const orch = activity === 'idle' ? this.activityTracker.orchSummary(id) : null;
-    if (orch) {
-      return [this.activitySegment.buildOrch(orch, this.config.colors)];
+    if (this.config.segments.background) {
+      const counts = this.backgroundSegment.build(
+        { commands: 0, agents: 0, monitors: orch?.monitors ?? 0, loops: orch?.loops ?? 0 },
+        colors,
+      );
+      if (counts) {
+        segments.push(counts);
+      }
+      segments.push(...this.jobSegment.build(this.jobReader.read(id), colors));
     }
-    return [this.activitySegment.build(activity, this.config.colors)];
+    return segments;
   }
 
   // Reads the reactive opencode state on every call, so the line follows new messages and model switches.
