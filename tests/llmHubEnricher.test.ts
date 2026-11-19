@@ -77,6 +77,7 @@ describe('LlmHubEnricher', () => {
               { id: 'copilot/claude-sonnet-5-5[1m]', context_window: 1_000_000 },
               { id: 'copilot/gpt-6.1-sol', context_window: 922_000 },
               { id: 'copilot/model-a', context_window: 64_000, llm_hub_price: { input_usd_per_1m: 4, output_usd_per_1m: 20 } },
+              { id: 'hub/smart-auto-balance', context_window: 200_000 },
             ],
           });
         }
@@ -312,6 +313,25 @@ describe('LlmHubEnricher', () => {
 
     expect(result.llm_hub_auto?.model).toBe('copilot/claude-sonnet-5-5[1m]');
     expect(result.context_window?.context_window_size).toBe(1_000_000);
+  });
+
+  it('takes the requested model window before a pick when the payload has tokens but no window', async () => {
+    smartBySession['sess-none'] = { session: 'sess-none', selection: { main: null, active: [], state: 'selected', age_ms: 0, stale: false } };
+    const payload = { ...smartStatus('sess-none'), context_window: { tokens: 50_000, current_context_tokens: 50_000 } } as StatusJSON;
+
+    const result = await enricher().apply(payload, NOW);
+
+    expect(result.context_window?.context_window_size).toBe(200_000);
+    expect(result.context_window?.current_context_used_percentage).toBeCloseTo(25, 5);
+  });
+
+  it('keeps the payload window before a pick when the payload has one', async () => {
+    smartBySession['sess-sized'] = { session: 'sess-sized', selection: { main: null, active: [], state: 'selected', age_ms: 0, stale: false } };
+    const payload = { ...smartStatus('sess-sized'), context_window: { size: 300_000, current_context_tokens: 3_000 } } as StatusJSON;
+
+    const result = await enricher().apply(payload, NOW);
+
+    expect(result.context_window).toEqual(payload.context_window);
   });
 
   it('derives the ctx percent from the displayed tokens over the hub window when current_context_tokens is absent', async () => {

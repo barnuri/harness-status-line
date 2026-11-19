@@ -83,6 +83,20 @@ describe('OpencodeStateReader.read()', () => {
       });
     });
 
+    it('keeps the last reported fill while the newest reply streams without usage', () => {
+      for (const streaming of [assistant({ tokens: undefined }), assistant({ tokens: { input: 0, output: 0 } })]) {
+        const input = reader.read(api([assistant(), streaming]), 'ses-1');
+
+        expect(input.contextTokens).toBe(1_600);
+      }
+    });
+
+    it('takes the newest reply that reported usage', () => {
+      const newer = assistant({ tokens: { input: 5_000, output: 100 } });
+
+      expect(reader.read(api([assistant(), newer]), 'ses-1').contextTokens).toBe(5_100);
+    });
+
     it('falls back to the session route when the slot has no session id', () => {
       expect(reader.read(api()).sessionId).toBe('ses-route');
     });

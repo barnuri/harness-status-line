@@ -12,7 +12,7 @@ export class OpencodeStateReader {
     const modelRef = this.selectedModel(api) ?? message?.model;
     const model = this.lookupModel(api, modelRef);
     const directory = this.call(() => api.data?.location?.default?.()?.directory);
-    const contextTokens = this.contextTokens(message);
+    const contextTokens = this.latestContextTokens(messages);
     const sessionCostUsd = this.sessionCost(api, sessionId, messages);
     const version = api.app?.version;
 
@@ -84,6 +84,21 @@ export class OpencodeStateReader {
       models.find((model) => model.modelID === ref.id && model.providerID === ref.providerID) ??
       models.find((model) => model.modelID === ref.id)
     );
+  }
+
+  // A reply still streaming reports no usage yet, so the newest reply with usage sets the fill; ctx stays steady between turns.
+  private latestContextTokens(list: ReadonlyArray<OpencodeMessage>): number | null {
+    for (let index = list.length - 1; index >= 0; index--) {
+      const message = list[index];
+      if (message?.type !== OpencodeStateReader.ASSISTANT_TYPE) {
+        continue;
+      }
+      const tokens = this.contextTokens(message);
+      if (tokens !== null && tokens > 0) {
+        return tokens;
+      }
+    }
+    return null;
   }
 
   private contextTokens(message: OpencodeMessage | null): number | null {

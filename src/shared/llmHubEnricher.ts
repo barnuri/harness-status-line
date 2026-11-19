@@ -57,8 +57,12 @@ export class LlmHubEnricher {
       store.markCopilotUsed(status.session_id, nowMs);
     }
     // The ctx denominator is the window the hub serves for the model it chose, not Claude's default size; the list price shows beside its name.
+    // Before a pick, a payload without a window (opencode on an unlisted size) takes the requested model's window instead.
     const chosen = result.llm_hub_auto?.model;
-    const served = chosen ? await client.fetchModelInfo(LlmHubEnricher.qualify(chosen)) : null;
+    const ctxSize = status.context_window?.context_window_size ?? status.context_window?.size ?? status.context_window?.displayed_context_limit;
+    const sizeless = status.context_window !== undefined && ctxSize === undefined;
+    const lookup = chosen ? LlmHubEnricher.qualify(chosen) : sizeless ? modelId : null;
+    const served = lookup ? await client.fetchModelInfo(lookup) : null;
     if (served !== null && result.llm_hub_auto) {
       result = { ...result, llm_hub_auto: { ...result.llm_hub_auto, price: served.price } };
     }
