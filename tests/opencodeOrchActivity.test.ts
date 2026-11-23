@@ -25,6 +25,7 @@ beforeAll(() => {
   write('runs', 'r-mine', { status: 'running', title: 'Ship the feature', coordinator: { session_id: 'ses-me' }, nodes: [node('running'), node('running'), node('done'), node('waiting')] });
   write('runs', 'r-other', { status: 'running', coordinator: { session_id: 'ses-other' }, nodes: [node('running', 'ses-other')] });
   write('runs', 'r-finished', { status: 'done', coordinator: { session_id: 'ses-me' }, nodes: [node('running')] });
+  write('runs', 'r-herdr', { status: 'running', title: 'Herdr coordinator', harness_session: 'ses-herdr', coordinator: { session_id: '' }, nodes: [node('running', 'ses-herdr')] });
   write('loops', 'r-mine', { status: 'running', pid: alivePid });
   write('loops', 'stopped', { status: 'stopped', pid: alivePid, run_id: 'r-mine' });
   write('loops', 'dead', { status: 'running', pid: deadPid, run_id: 'r-mine' });
@@ -42,6 +43,10 @@ describe('OrchStateReader.read()', () => {
       monitors: 1,
       runTitle: 'Ship the feature',
     });
+  });
+
+  it('shows a run whose coordinator has no session id to the session that started it', () => {
+    expect(reader().read('ses-herdr')?.runTitle).toBe('Herdr coordinator');
   });
 
   it('is null for a session with no running node in its runs', () => {

@@ -42,9 +42,12 @@ export class OrchStateReader {
     };
   }
 
+  // The coordinator's session id, or the session that started the run when the coordinator has none
+  // (a herdr-registered coordinator may leave session_id empty).
   private coordinatorSession(state: OrchRow): unknown {
     const coordinator = state.coordinator;
-    return isRecord(coordinator) ? coordinator.session_id : undefined;
+    const fromCoordinator = isRecord(coordinator) ? coordinator.session_id : undefined;
+    return typeof fromCoordinator === 'string' && fromCoordinator !== '' ? fromCoordinator : state.harness_session;
   }
 
   private nodes(state: OrchRow): OrchRow[] {
