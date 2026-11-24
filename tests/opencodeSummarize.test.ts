@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { OpencodeToolCall } from '../src/opencode/summarize/opencodeToolCall.ts';
 import { OpencodeTurns } from '../src/opencode/summarize/opencodeTurns.ts';
 import { OpencodeSessionSummarize } from '../src/opencode/summarize/opencodeSessionSummarize.ts';
+import { SessionSummarizes } from '../src/opencode/summarize/sessionSummarizes.ts';
 import { SummarizeText } from '../claude-mods/summarize/hooks/summarizeText.ts';
 import type { SummarizeRepos } from '../claude-mods/summarize/hooks/summarizeRepos.ts';
 import type { SummarizeSessionFiles } from '../claude-mods/summarize/hooks/summarizeSessionFiles.ts';
@@ -78,6 +79,22 @@ describe('OpencodeTurns.split()', () => {
     ];
 
     expect(OpencodeTurns.split(messages, false)[0]?.skills).toEqual(['code-gen']);
+  });
+});
+
+describe('SessionSummarizes.isMissingIterations()', () => {
+  it('stays quiet for a transcript with only user messages', () => {
+    const messages = [user('m1', 'hello', 0), user('m2', '', 1)];
+
+    expect(SessionSummarizes.isMissingIterations(messages, 0)).toBe(false);
+  });
+
+  it('reports a session with assistant replies that recorded no iteration', () => {
+    expect(SessionSummarizes.isMissingIterations([user('m1', 'a', 0), assistant([], 1)], 0)).toBe(true);
+  });
+
+  it('stays quiet once an iteration is recorded', () => {
+    expect(SessionSummarizes.isMissingIterations([user('m1', 'a', 0), assistant([writePart], 1)], 1)).toBe(false);
   });
 });
 

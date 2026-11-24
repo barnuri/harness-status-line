@@ -64,6 +64,11 @@ export class SessionSummarizes {
     await new SummarizeErrorLog(host).log(`opencode summarize failed: ${SummarizeErrorLog.describe(error)}`);
   }
 
+  /** True when a session with assistant replies recorded no iteration. A transcript with only user messages is a normal state, not an error. */
+  static isMissingIterations(messages: ReadonlyArray<OpencodeSessionMessage>, entryCount: number): boolean {
+    return entryCount === 0 && messages.some((message) => message.type === 'assistant');
+  }
+
   private async onTurnStart(sessionId: string): Promise<void> {
     await this.summarizeOf(sessionId).noteTurnStart().catch((error: unknown) => this.logError(sessionId, error));
   }
@@ -74,7 +79,7 @@ export class SessionSummarizes {
       const messages = this.data.session.message.list(sessionId) as ReadonlyArray<OpencodeSessionMessage>;
       const isRunning = !isTurnFinished && this.data.session.status(sessionId) === 'running';
       await summarize.record(OpencodeTurns.split(messages, isRunning), Date.now());
-      if (summarize.entries.length === 0 && messages.length > 0) {
+      if (SessionSummarizes.isMissingIterations(messages, summarize.entries.length)) {
         await this.logError(sessionId, new Error(`no iterations from ${messages.length} messages (types: ${[...new Set(messages.map((message) => message.type))].join(', ')})`));
       }
       await summarize.refreshFiles(isTurnFinished);
