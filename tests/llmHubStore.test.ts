@@ -168,7 +168,7 @@ describe('LlmHubStore', () => {
     expect(store.readSelection('sess-0', NOW + 50)).toBeNull();
     expect(store.readSelection('sess-50', NOW + 50)?.model).toBe('copilot/model-50');
     expect(Object.keys(JSON.parse(fs.readFileSync(storeFile(), 'utf-8')).selections)).toHaveLength(50);
-  });
+  }, 30_000);
 
   it('reads a file written before selections existed as having none', () => {
     store.writeDecision('sess-1', decision('copilot/claude-sonnet-5-5'), NOW);

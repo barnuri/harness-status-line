@@ -40,6 +40,8 @@ class OpencodeStatusLinePlugin {
   ];
   /** Each rebuild starts a process: at most one every 2 seconds. */
   private static readonly REBUILD_INTERVAL_MS = 2_000;
+  /** With unchanged input, the line is rebuilt at most this often (quota and clock segments can age). Each start is scanned by the endpoint security agents. */
+  private static readonly UNCHANGED_REBUILD_MS = 30_000;
   private static readonly RUN_TIMEOUT_MS = 10_000;
   private static readonly CLI_PATH = path.join(import.meta.dir, 'segmentsCli.ts');
   private static readonly CACHE_FILE = path.join(os.homedir(), '.claude', 'harness-status-line-opencode-segments.json');
@@ -199,6 +201,10 @@ class OpencodeStatusLinePlugin {
       if (inputKey !== this.builtInputKey) {
         this.scheduleRebuild(OpencodeStatusLinePlugin.REBUILD_INTERVAL_MS - sinceBuildMs);
       }
+      return this.segments;
+    }
+    if (!modelChanged && inputKey === this.builtInputKey && sinceBuildMs < OpencodeStatusLinePlugin.UNCHANGED_REBUILD_MS) {
+      this.scheduleRebuild(OpencodeStatusLinePlugin.UNCHANGED_REBUILD_MS - sinceBuildMs);
       return this.segments;
     }
     this.builtModelKey = modelKey;

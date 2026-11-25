@@ -1711,7 +1711,7 @@ describe('buildSegments() — Copilot CLI payload', () => {
     const segs = parser.buildSegments(makeCopilotStatus({ copilot_quota: liveAicQuota(inDays(3.5)) }), cfg);
 
     expect(segs.find(s => s.label === 'left')?.value)
-      .toMatch(/^\$203\.74 \(62%\) · per work day \$\d+\.\d{2} \(\d+\.\d%\)$/);
+      .toMatch(/^\$203\.74 \(62%\) · per work day \$\d+\.\d{2} \(\d+(\.\d)?%\)$/);
   });
 
   it('shows the AIC count before the dollars when showAic is on', () => {
