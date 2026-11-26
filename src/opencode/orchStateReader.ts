@@ -22,12 +22,12 @@ export class OrchStateReader {
 
   constructor(private readonly home: string = OrchStateReader.HOME) {}
 
-  /** The orch work of a session, or null when no run of it has nodes running. Never throws. */
+  /** The orch work of a session, or null when it has no run with status running. A run between nodes still shows. Never throws. */
   read(sessionId: string): OrchWork | null {
     const runs = this.rows(OrchStateReader.RUNS).filter(([, state]) => state.status === OrchStateReader.RUNNING && this.coordinatorSession(state) === sessionId);
     const nodes = runs.flatMap(([, state]) => this.nodes(state));
     const running = nodes.filter((node) => node.status === 'running').length;
-    if (running === 0) {
+    if (runs.length === 0) {
       return null;
     }
     const mine = new Set(runs.map(([id]) => id));

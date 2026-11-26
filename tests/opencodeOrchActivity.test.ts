@@ -49,8 +49,13 @@ describe('OrchStateReader.read()', () => {
     expect(reader().read('ses-herdr')?.runTitle).toBe('Herdr coordinator');
   });
 
-  it('is null for a session with no running node in its runs', () => {
+  it('is null for a session with no running run', () => {
     expect(reader().read('ses-nobody')).toBeNull();
+  });
+
+  it('still shows a running run between nodes, with 0 nodes running', () => {
+    write('runs', 'r-between', { status: 'running', title: 'Between', coordinator: { session_id: 'ses-between' }, nodes: [node('done'), node('waiting')] });
+    expect(reader().read('ses-between')).toMatchObject({ running: 0, done: 1, total: 2, runTitle: 'Between' });
   });
 
   it('does not show a run that another session coordinates, even when this session owns one of its nodes', () => {
