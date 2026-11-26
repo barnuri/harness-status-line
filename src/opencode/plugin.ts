@@ -9,6 +9,8 @@ import { OpencodeActivityTracker } from './activityTracker.ts';
 import { ActivitySegment } from '../shared/activitySegment.ts';
 import { OpencodeJobReader } from './jobStateReader.ts';
 import { JobSegment } from '../shared/jobSegment.ts';
+import { OpencodeScheduleReader } from './scheduleStateReader.ts';
+import { ScheduleSegment } from '../shared/scheduleSegment.ts';
 import { BackgroundTaskSegment } from '../shared/backgroundTaskSegment.ts';
 import { ConfigManager } from '../configManager.ts';
 import type { ActivityState, Config, Segment } from '../types.ts';
@@ -53,6 +55,8 @@ class OpencodeStatusLinePlugin {
   private readonly backgroundSegment = new BackgroundTaskSegment();
   private readonly jobReader = new OpencodeJobReader();
   private readonly jobSegment = new JobSegment();
+  private readonly scheduleReader = new OpencodeScheduleReader();
+  private readonly scheduleSegment = new ScheduleSegment();
   private readonly activityTracker: OpencodeActivityTracker;
   private readonly config: Config = new ConfigManager().load();
   private readonly revision: RevisionStore;
@@ -80,7 +84,7 @@ class OpencodeStatusLinePlugin {
         const routeId = this.activityTracker.routeSessionId();
         const activity = this.activityTracker.current(routeId);
         const orch = this.activityTracker.orch(routeId);
-        const shown = JSON.stringify([activity, orch, this.jobReader.read(routeId)]);
+        const shown = JSON.stringify([activity, orch, this.jobReader.read(routeId), this.scheduleReader.read(routeId)]);
         const changed = shown !== this.shownLive;
         this.shownLive = shown;
         if (changed || orch || (activity && ActivitySegment.isAnimated(activity))) {
@@ -181,7 +185,24 @@ class OpencodeStatusLinePlugin {
       }
       segments.push(...this.jobSegment.build(this.jobReader.read(id), colors));
     }
+    segments.push(...this.scheduleSegments(id));
     return segments;
+  }
+
+  // Scheduled automations, the /goal and the todo list of the session, each behind its own toggle.
+  private scheduleSegments(sessionId: string | undefined): Segment[] {
+    const { colors, segments: toggles } = this.config;
+    if (!toggles.automations && !toggles.goals && !toggles.goal) {
+      return [];
+    }
+    const work = this.scheduleReader.read(sessionId);
+    const goal = this.scheduleSegment.buildGoal(work.goal, colors, toggles.goal);
+    const goals = this.scheduleSegment.buildGoals(work.goals, colors, toggles.goals);
+    return [
+      ...this.scheduleSegment.buildAutomations(work.automations, colors, Date.now(), toggles.automations),
+      ...(goal ? [goal] : []),
+      ...(goals ? [goals] : []),
+    ];
   }
 
   // Reads the reactive opencode state on every call, so the line follows new messages and model switches.

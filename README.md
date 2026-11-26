@@ -257,6 +257,22 @@ bunx barnuri/harness-status-line config set segments.worktree false
 bunx barnuri/harness-status-line config set segments.autorun false
 ```
 
+### opencode automations, goal and todos
+
+The opencode line shows three chips, each hidden when empty. They read opencode's own database read-only (cached 5 s).
+
+- `⏰ 2 scheduled · next 28m` while the session has active automations, with a `1 failed` chip when a run failed.
+- `🎯 goal 3/50 · <objective>` for the session's `/goal` (rounds/max rounds). A paused goal reads `🎯 goal 3/50 · paused · <objective>` in the warning color. A complete goal is hidden.
+- `☑ 3/7 · Wire graph wrapper` for the todo list while items are open.
+
+The todo chip keeps its old toggle name `segments.goals` for backward compatibility; `/goal` uses `segments.goal`. Turn chips off with:
+
+```bash
+bunx barnuri/harness-status-line config set segments.automations false
+bunx barnuri/harness-status-line config set segments.goal false
+bunx barnuri/harness-status-line config set segments.goals false
+```
+
 ## Copilot CLI
 
 Copilot CLI's `/statusline` (alias `/footer`) feature spawns `statusLine.command` on each refresh, writes JSON to its stdin, and prints the trimmed stdout as the footer. `--setup` configures this automatically.

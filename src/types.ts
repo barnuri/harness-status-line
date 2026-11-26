@@ -300,6 +300,9 @@ export interface SegmentVisibility {
   readonly lines: boolean;
   readonly activity: boolean;
   readonly background: boolean;
+  readonly automations: boolean;
+  readonly goals: boolean;
+  readonly goal: boolean;
 }
 
 export interface SegmentColorMap {

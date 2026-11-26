@@ -83,9 +83,9 @@ describe('OpencodeJobReader', () => {
 
 describe('JobSegment', () => {
   const seg = new JobSegment();
-  it('shows bg and sub with 24-char text and age', () => {
+  it('shows bg and agents with 24-char text and age', () => {
     const out = seg.build(reader().read('me'), colors, NOW);
-    expect(out.map((s) => s.value)).toEqual(['bg 3 sleep 600 && echo this-i 2m', 'sub 2 Explore the repo 1m']);
+    expect(out.map((s) => s.value)).toEqual(['bg 3 sleep 600 && echo this-i 2m', 'agents: 2 Explore the repo 1m']);
   });
   it('shows nothing when counts are 0', () => {
     expect(seg.build({ bgCount: 0, bgOldest: null, subCount: 0, subFirst: null }, colors, NOW)).toEqual([]);

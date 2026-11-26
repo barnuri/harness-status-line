@@ -31,6 +31,9 @@ export class ConfigManager {
       lines: false,
       activity: true,
       background: true,
+      automations: true,
+      goals: true,
+      goal: true,
     },
     colors: {
       folder:           { bg: [30, 41, 59],   fg: [248, 250, 252] },
